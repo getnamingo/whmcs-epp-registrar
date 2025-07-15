@@ -1,8 +1,8 @@
 <?php
 /**
- * Indera EPP registrar module for WHMCS (https://www.whmcs.com/)
+ * Namingo EPP registrar module for WHMCS (https://www.whmcs.com/)
  *
- * Written in 2024 by Taras Kondratyuk (https://getpinga.com)
+ * Written in 2024-2005 by Taras Kondratyuk (https://getpinga.com)
  * Based on Generic EPP with DNSsec Registrar Module for WHMCS written in 2019 by Lilian Rudenco (info@xpanel.com)
  * Work of Lilian Rudenco is under http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
  *
@@ -1666,22 +1666,36 @@ function epp_ClientAreaCustomButtonArray()
 function epp_AdminCustomButtonArray($params = array())
 {
     _epp_log(__FUNCTION__, $params);
+
     $domainid = $params['domainid'];
 
-    // $domain = Capsule::table('tbldomains')->where('id', $domainid)->first();
+    $buttons = [];
 
-    $domain = Capsule::table('epp_domain_status')->where('domain_id', '=', $domainid)->where('status', '=', 'clientHold')->first();
+    // Check for hold status
+    $holdStatus = Capsule::table('epp_domain_status')
+        ->where('domain_id', '=', $domainid)
+        ->where('status', '=', 'clientHold')
+        ->first();
 
-    if (isset($domain->status)) {
-        return array(
-            'Unhold Domain' => 'UnHoldDomain'
-        );
+    if (isset($holdStatus->status)) {
+        $buttons['Unhold Domain'] = 'UnHoldDomain';
+    } else {
+        $buttons['Put Domain On Hold'] = 'OnHoldDomain';
     }
-    else {
-        return array(
-            'Put Domain On Hold' => 'OnHoldDomain'
-        );
+
+    // Check for transfer pending status
+    $transferPending = Capsule::table('epp_domain_status')
+        ->where('domain_id', '=', $domainid)
+        ->where('status', '=', 'pendingTransfer')
+        ->exists();
+
+    if ($transferPending) {
+        $buttons['Approve Transfer'] = 'ApproveTransfer';
+        $buttons['Cancel Transfer Request'] = 'CancelTransfer';
+        $buttons['Reject Transfer'] = 'RejectTransfer';
     }
+
+    return $buttons;
 }
 
 function epp_OnHoldDomain($params = array())
@@ -1834,6 +1848,132 @@ function epp_UnHoldDomain($params = array())
 </epp>');
             $r = $s->write($xml, __FUNCTION__);
         }
+    }
+
+    catch(exception $e) {
+        $return = array(
+            'error' => $e->getMessage()
+        );
+    }
+
+    if (!empty($s)) {
+        $s->logout($params['registrarprefix']);
+    }
+
+    return $return;
+}
+
+function epp_ApproveTransfer($params) {
+    _epp_log(__FUNCTION__, $params);
+    $return = array();
+    try {
+        $s = _epp_startEppClient($params);
+        $from = $to = array();
+        $from[] = '/{{ name }}/';
+        $to[] = htmlspecialchars($params['domainname']);
+        $from[] = '/{{ clTRID }}/';
+        $clTRID = str_replace('.', '', round(microtime(1), 3));
+        $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
+        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <transfer op="approve">
+      <domain:transfer
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>{{ name }}</domain:name>
+      </domain:transfer>
+    </transfer>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+        $r = $s->write($xml, __FUNCTION__);
+        $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
+    }
+
+    catch(exception $e) {
+        $return = array(
+            'error' => $e->getMessage()
+        );
+    }
+
+    if (!empty($s)) {
+        $s->logout($params['registrarprefix']);
+    }
+
+    return $return;
+}
+
+function epp_CancelTransfer($params) {
+    _epp_log(__FUNCTION__, $params);
+    $return = array();
+    try {
+        $s = _epp_startEppClient($params);
+        $from = $to = array();
+        $from[] = '/{{ name }}/';
+        $to[] = htmlspecialchars($params['domainname']);
+        $from[] = '/{{ clTRID }}/';
+        $clTRID = str_replace('.', '', round(microtime(1), 3));
+        $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
+        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <transfer op="cancel">
+      <domain:transfer
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>{{ name }}</domain:name>
+      </domain:transfer>
+    </transfer>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+        $r = $s->write($xml, __FUNCTION__);
+        $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
+    }
+
+    catch(exception $e) {
+        $return = array(
+            'error' => $e->getMessage()
+        );
+    }
+
+    if (!empty($s)) {
+        $s->logout($params['registrarprefix']);
+    }
+
+    return $return;
+}
+
+function epp_RejectTransfer($params) {
+    _epp_log(__FUNCTION__, $params);
+    $return = array();
+    try {
+        $s = _epp_startEppClient($params);
+        $from = $to = array();
+        $from[] = '/{{ name }}/';
+        $to[] = htmlspecialchars($params['domainname']);
+        $from[] = '/{{ clTRID }}/';
+        $clTRID = str_replace('.', '', round(microtime(1), 3));
+        $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
+        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <transfer op="reject">
+      <domain:transfer
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>{{ name }}</domain:name>
+      </domain:transfer>
+    </transfer>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+        $r = $s->write($xml, __FUNCTION__);
+        $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
     }
 
     catch(exception $e) {
