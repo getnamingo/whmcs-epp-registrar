@@ -1,4 +1,14 @@
-# Compatibility
+# WHMCS EPP Registrar
+
+[![StandWithUkraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
+
+[![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
+
+A generic WHMCS registrar module for connecting to any domain registry that uses the EPP protocol.
+
+This module is designed to work with both gTLD and ccTLD registries and provides a flexible foundation for EPP-based domain management in WHMCS.
+
+## Compatibility
 
 This module is supposed to work with:
 
@@ -30,7 +40,7 @@ This module is supposed to work with:
 
 - ZDNS - .all
 
-# WHMCS Module Installation instructions
+## Installation
 
 1. Download and install [WHMCS](https://whmcs.com/)
 
@@ -56,9 +66,9 @@ This module is supposed to work with:
 
 You should be good to go now.
 
-# Troubleshooting
+## Troubleshooting
 
-## Fixing "Oops!" Issues in WHMCS
+### Fixing "Oops!" Issues in WHMCS
 
 If you experience "Oops!" or blank page errors in WHMCS after activating the EPP module, it might be caused by incorrect file permissions or ownership. Follow these steps to fix it:
 
@@ -69,7 +79,7 @@ chmod -R 755 /var/www/html/whmcs/modules/registrars/epp
 
 Replace `/var/www/html/whmcs` with the path to your WHMCS installation, if different.
 
-## Generating an SSL Certificate and Key
+### Generating an SSL Certificate and Key
 
 If you do not have an SSL certificate and private key for secure communication with the registry, you can generate one using OpenSSL.
 

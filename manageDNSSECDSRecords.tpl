@@ -1,6 +1,7 @@
 <div class="card">
     <div class="card-body">
-        <h3 class="card-title">Manage DNSSEC DS Records</h3>
+        <h3 class="card-title">DNSSEC</h3>
+        <p>Manage DS records to enable DNSSEC for this domain.</p>
 
 {if $error}
         <div class="alert alert-warning">

@@ -1,25 +1,28 @@
 <?php
 /**
- * Namingo EPP registrar module for WHMCS (https://www.whmcs.com/)
+ * Namingo EPP Registrar module for WHMCS (https://www.whmcs.com/)
  *
- * Written in 2024-2005 by Taras Kondratyuk (https://getpinga.com)
+ * Written in 2024-2025 by Taras Kondratyuk (https://namingo.org)
  * Based on Generic EPP with DNSsec Registrar Module for WHMCS written in 2019 by Lilian Rudenco (info@xpanel.com)
  * Work of Lilian Rudenco is under http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
  *
  * @license MIT
  */
+
 if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
+use WHMCS\Carbon;
+use WHMCS\Domain\Registrar\Domain;
 
 function epp_MetaData()
 {
     return array(
-        'DisplayName' => 'EPP Registry',
-        'APIVersion' => '1.0.1',
+        'DisplayName' => 'EPP Registrar',
+        'APIVersion' => '1.1.0',
     );
 }
 
@@ -35,104 +38,133 @@ function _epp_error_handler($errno, $errstr, $errfile, $errline)
 set_error_handler('_epp_error_handler');
 _epp_log('================= ' . date("Y-m-d H:i:s") . ' =================');
 
-function epp_getConfigArray($params = array())
+function epp_getConfigArray(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    _epp_create_table();
-    _epp_create_column();
+    if (empty($params['gtld'])) {
+        _epp_create_table();
+        _epp_create_column();
+    }
 
-    $configarray = array(
-        'FriendlyName' => array(
-            'Type' => 'System',
-            'Value' => 'EPP',
-        ),
-        'Description' => array(
-            'Type' => 'System',
-            'Value' => 'This module can be used with any registry that supports <a href="https://tools.ietf.org/html/rfc5731">RFC 5731</a>, <a href="https://tools.ietf.org/html/rfc5732">5732</a>, <a href="https://tools.ietf.org/html/rfc5733">5733</a>, <a href="https://tools.ietf.org/html/rfc5734">5734</a>',
-        ),
-        'host' => array(
-            'FriendlyName' => 'EPP Server',
-            'Type' => 'text',
-            'Size' => '32',
-            'Description' => 'EPP Server Host.'
-        ),
-        'port' => array(
-            'FriendlyName' => 'Server Port',
-            'Type' => 'text',
-            'Size' => '4',
-            'Default' => '700',
-            'Description' => 'System port number 700 has been assigned by the IANA for mapping EPP onto TCP.'
-        ),
-        'tls_version' => array(
-            'FriendlyName' => 'Use TLS v1.3',
-            'Type' => 'yesno',
-            'Description' => 'Use more secure TLS v1.3 if the registry supports it.'
-        ),
-        'verify_peer' => array(
-            'FriendlyName' => 'Verify Peer',
-            'Type' => 'yesno',
-            'Description' => 'Require verification of SSL certificate used.'
-        ),
-        'cafile' => array(
-            'FriendlyName' => 'CA File',
-            'Type' => 'text',
-            'Default' => '',
-            'Description' => 'Certificate Authority file which should be used with the verify_peer context option <br />to authenticate the identity of the remote peer.'
-        ),
-        'local_cert' => array(
-            'FriendlyName' => 'Certificate',
-            'Type' => 'text',
-            'Default' => 'cert.pem',
-            'Description' => 'Local certificate file. It must be a PEM encoded file.'
-        ),
-        'local_pk' => array(
-            'FriendlyName' => 'Private Key',
-            'Type' => 'text',
-            'Default' => 'key.pem',
-            'Description' => 'Private Key.'
-        ),
-        'passphrase' => array(
-            'FriendlyName' => 'Pass Phrase',
-            'Type' => 'password',
-            'Size' => '32',
-            'Description' => 'Enter pass phrase with which your certificate file was encoded.'
-        ),
-        'clid' => array(
-            'FriendlyName' => 'Client ID',
-            'Type' => 'text',
-            'Size' => '20',
-            'Description' => 'Client identifier.'
-        ),
-        'pw' => array(
-            'FriendlyName' => 'Password',
-            'Type' => 'password',
-            'Size' => '20',
-            'Description' => "Client's plain text password."
-        ),
-        'registrarprefix' => array(
-            'FriendlyName' => 'Registrar Prefix',
-            'Type' => 'text',
-            'Size' => '4',
-            'Description' => 'Registry assigns each registrar a unique prefix with which that registrar must create contact IDs.'
-        )
-    );
-    return $configarray;
+    return [
+        'FriendlyName' => [
+            'Type'  => 'System',
+            'Value' => 'EPP Registrar',
+        ],
+
+        'Description' => [
+            'Type'  => 'System',
+            'Value' => 'Connect WHMCS to any domain registry using the standard EPP protocol.',
+        ],
+
+        'host' => [
+            'FriendlyName' => 'EPP Hostname',
+            'Type'         => 'text',
+            'Size'         => '32',
+            'Description'  => 'Registry EPP endpoint hostname (e.g. epp.registry.tld).',
+        ],
+
+        'port' => [
+            'FriendlyName' => 'EPP Port',
+            'Type'         => 'text',
+            'Size'         => '5',
+            'Default'      => '700',
+            'Description'  => 'TCP port used by the registry (700 is the standard EPP port, but some registries use a different value).',
+        ],
+
+        'tls_version' => [
+            'FriendlyName' => 'Prefer TLS 1.3',
+            'Type'         => 'yesno',
+            'Description'  => 'Use TLS 1.3 when available; falls back to older TLS if the registry does not support it.',
+        ],
+
+        'verify_peer' => [
+            'FriendlyName' => 'Verify TLS Certificate',
+            'Type'         => 'yesno',
+            'Description'  => 'Validate the registry server certificate (recommended). Disable only for test environments.',
+        ],
+
+        'cafile' => [
+            'FriendlyName' => 'CA Bundle Path',
+            'Type'         => 'text',
+            'Default'      => '',
+            'Description'  => 'Path to a CA bundle file used to verify the registry certificate (required when “Verify TLS Certificate” is enabled).',
+        ],
+
+        'local_cert' => [
+            'FriendlyName' => 'Client Certificate (PEM)',
+            'Type'         => 'text',
+            'Default'      => 'cert.pem',
+            'Description'  => 'Path to your registrar client certificate in PEM format.',
+        ],
+
+        'local_pk' => [
+            'FriendlyName' => 'Client Private Key',
+            'Type'         => 'text',
+            'Default'      => 'key.pem',
+            'Description'  => 'Path to your private key file (PEM).',
+        ],
+
+        'passphrase' => [
+            'FriendlyName' => 'Private Key Passphrase',
+            'Type'         => 'password',
+            'Size'         => '32',
+            'Description'  => 'Passphrase for the private key (leave blank if the key is not encrypted).',
+        ],
+
+        'clid' => [
+            'FriendlyName' => 'Client ID (clID)',
+            'Type'         => 'text',
+            'Size'         => '20',
+            'Description'  => 'Registrar identifier provided by the registry.',
+        ],
+
+        'pw' => [
+            'FriendlyName' => 'Client Password',
+            'Type'         => 'password',
+            'Size'         => '32',
+            'Description'  => 'EPP login password provided by the registry.',
+        ],
+
+        'registrarprefix' => [
+            'FriendlyName' => 'Object ID Prefix',
+            'Type'         => 'text',
+            'Size'         => '16',
+            'Description'  => 'Prefix used when generating registry object IDs (contacts/hosts). Use the value required by the registry, if any.',
+        ],
+
+        'gtld' => [
+            'FriendlyName' => 'gTLD Registry',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  => 'Enable this if the registry is a generic TLD (gTLD) operated under ICANN policies.',
+        ],
+
+        'min_data_set' => [
+            'FriendlyName' => 'Use Minimum Data Set',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  => 'Use the ICANN Minimum Data Set.',
+        ],
+
+    ];
 }
 
-function _epp_startEppClient($params = array())
+function _epp_startEppClient(array $params = [])
 {
     $s = new epp_epp_client($params);
     $s->login($params['clid'], $params['pw'], $params['registrarprefix']);
     return $s;
 }
 
-function epp_RegisterDomain($params = array())
+function epp_RegisterDomain(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -164,83 +196,86 @@ function epp_RegisterDomain($params = array())
             throw new exception($r->cd[0]->name . ' ' . $reason);
         }
 
-        $contacts = array();
-        foreach(array(
-            'registrant',
-            'admin',
-            'tech',
-            'billing'
-        ) as $i => $contactType) {
-            // contact:create
-            $from = $to = array();
-            $from[] = '/{{ id }}/';
-            $to[] = strtoupper($s->generateRandomString());
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['firstname'] . ' ' . $params['lastname']);
-            $from[] = '/{{ org }}/';
-            $to[] = htmlspecialchars($params['companyname']);
-            $from[] = '/{{ street1 }}/';
-            $to[] = htmlspecialchars($params['address1']);
-            $from[] = '/{{ street2 }}/';
-            $to[] = htmlspecialchars($params['address2']);
-            $from[] = '/{{ street3 }}/';
-            $street3 = (isset($params['address3']) ? $params['address3'] : '');
-            $to[] = htmlspecialchars($street3);
-            $from[] = '/{{ city }}/';
-            $to[] = htmlspecialchars($params['city']);
-            $from[] = '/{{ state }}/';
-            $to[] = htmlspecialchars($params['state']);
-            $from[] = '/{{ postcode }}/';
-            $to[] = htmlspecialchars($params['postcode']);
-            $from[] = '/{{ country }}/';
-            $to[] = htmlspecialchars($params['country']);
-            $from[] = '/{{ phonenumber }}/';
-            $to[] = htmlspecialchars($params['fullphonenumber']);
-            $from[] = '/{{ email }}/';
-            $to[] = htmlspecialchars($params['email']);
-            $from[] = '/{{ authInfo }}/';
-            $to[] = htmlspecialchars($s->generateObjectPW());
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($params['registrarprefix'] . '-contact-create-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <create>
-      <contact:create
-       xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-        <contact:id>{{ id }}</contact:id>
-        <contact:postalInfo type="int">
-          <contact:name>{{ name }}</contact:name>
-          <contact:org>{{ org }}</contact:org>
-          <contact:addr>
-            <contact:street>{{ street1 }}</contact:street>
-            <contact:street>{{ street2 }}</contact:street>
-            <contact:street>{{ street3 }}</contact:street>
-            <contact:city>{{ city }}</contact:city>
-            <contact:sp>{{ state }}</contact:sp>
-            <contact:pc>{{ postcode }}</contact:pc>
-            <contact:cc>{{ country }}</contact:cc>
-          </contact:addr>
-        </contact:postalInfo>
-        <contact:voice>{{ phonenumber }}</contact:voice>
-        <contact:fax></contact:fax>
-        <contact:email>{{ email }}</contact:email>
-        <contact:authInfo>
-          <contact:pw>{{ authInfo }}</contact:pw>
-        </contact:authInfo>
-      </contact:create>
-    </create>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $s->write($xml, __FUNCTION__);
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:contact-1.0')->creData;
-            $contacts[$i + 1] = $r->id;
+        if (empty($params['gtld']) && empty($params['min_data_set'])) {
+            $contacts = array();
+            foreach(array(
+                'registrant',
+                'admin',
+                'tech',
+                'billing'
+            ) as $i => $contactType) {
+                // contact:create
+                $from = $to = [];
+
+                $from[] = '/{{ id }}/';
+                $to[] = strtoupper($s->generateRandomString());
+                $from[] = '/{{ name }}/';
+                $to[] = htmlspecialchars($params['firstname'] . ' ' . $params['lastname']);
+                $from[] = '/{{ org }}/';
+                $to[] = htmlspecialchars($params['companyname']);
+                $from[] = '/{{ street1 }}/';
+                $to[] = htmlspecialchars($params['address1']);
+                $from[] = '/{{ street2 }}/';
+                $to[] = htmlspecialchars($params['address2']);
+                $from[] = '/{{ street3 }}/';
+                $street3 = (isset($params['address3']) ? $params['address3'] : '');
+                $to[] = htmlspecialchars($street3);
+                $from[] = '/{{ city }}/';
+                $to[] = htmlspecialchars($params['city']);
+                $from[] = '/{{ state }}/';
+                $to[] = htmlspecialchars($params['state']);
+                $from[] = '/{{ postcode }}/';
+                $to[] = htmlspecialchars($params['postcode']);
+                $from[] = '/{{ country }}/';
+                $to[] = htmlspecialchars($params['country']);
+                $from[] = '/{{ phonenumber }}/';
+                $to[] = htmlspecialchars($params['fullphonenumber']);
+                $from[] = '/{{ email }}/';
+                $to[] = htmlspecialchars($params['email']);
+                $from[] = '/{{ authInfo }}/';
+                $to[] = htmlspecialchars($s->generateObjectPW());
+                $from[] = '/{{ clTRID }}/';
+                $clTRID = str_replace('.', '', round(microtime(1), 3));
+                $to[] = htmlspecialchars($params['registrarprefix'] . '-contact-create-' . $clTRID);
+                $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
+                $to[] = '';
+                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+      <command>
+        <create>
+          <contact:create
+           xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
+            <contact:id>{{ id }}</contact:id>
+            <contact:postalInfo type="int">
+              <contact:name>{{ name }}</contact:name>
+              <contact:org>{{ org }}</contact:org>
+              <contact:addr>
+                <contact:street>{{ street1 }}</contact:street>
+                <contact:street>{{ street2 }}</contact:street>
+                <contact:street>{{ street3 }}</contact:street>
+                <contact:city>{{ city }}</contact:city>
+                <contact:sp>{{ state }}</contact:sp>
+                <contact:pc>{{ postcode }}</contact:pc>
+                <contact:cc>{{ country }}</contact:cc>
+              </contact:addr>
+            </contact:postalInfo>
+            <contact:voice>{{ phonenumber }}</contact:voice>
+            <contact:fax></contact:fax>
+            <contact:email>{{ email }}</contact:email>
+            <contact:authInfo>
+              <contact:pw>{{ authInfo }}</contact:pw>
+            </contact:authInfo>
+          </contact:create>
+        </create>
+        <clTRID>{{ clTRID }}</clTRID>
+      </command>
+    </epp>');
+                $r = $s->write($xml, __FUNCTION__);
+                $r = $r->response->resData->children('urn:ietf:params:xml:ns:contact-1.0')->creData;
+                $contacts[$i + 1] = $r->id;
+            }
         }
 
         foreach(array(
@@ -254,7 +289,8 @@ function epp_RegisterDomain($params = array())
                 continue;
             }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params["{$ns}"]);
         $from[] = '/{{ clTRID }}/';
@@ -282,7 +318,8 @@ function epp_RegisterDomain($params = array())
             continue;
         }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params["{$ns}"]);
         $from[] = '/{{ clTRID }}/';
@@ -305,7 +342,8 @@ function epp_RegisterDomain($params = array())
         $r = $s->write($xml, __FUNCTION__);
 }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ period }}/';
@@ -319,15 +357,17 @@ function epp_RegisterDomain($params = array())
         $from[] = '/{{ ns4 }}/';
         $to[] = htmlspecialchars($params['ns4']);
         $from[] = '/{{ ns5 }}/';
-        $to[] = htmlspecialchars($params['ns5']);        
-        $from[] = '/{{ cID_1 }}/';
-        $to[] = htmlspecialchars($contacts[1]);
-        $from[] = '/{{ cID_2 }}/';
-        $to[] = htmlspecialchars($contacts[2]);
-        $from[] = '/{{ cID_3 }}/';
-        $to[] = htmlspecialchars($contacts[3]);
-        $from[] = '/{{ cID_4 }}/';
-        $to[] = htmlspecialchars($contacts[4]);
+        $to[] = htmlspecialchars($params['ns5']);      
+        if (empty($params['gtld']) && empty($params['min_data_set'])) {        
+            $from[] = '/{{ cID_1 }}/';
+            $to[] = htmlspecialchars($contacts[1]);
+            $from[] = '/{{ cID_2 }}/';
+            $to[] = htmlspecialchars($contacts[2]);
+            $from[] = '/{{ cID_3 }}/';
+            $to[] = htmlspecialchars($contacts[3]);
+            $from[] = '/{{ cID_4 }}/';
+            $to[] = htmlspecialchars($contacts[4]);
+        }
         $from[] = '/{{ authInfo }}/';
         $to[] = htmlspecialchars($s->generateObjectPW());
         $from[] = '/{{ clTRID }}/';
@@ -335,42 +375,86 @@ function epp_RegisterDomain($params = array())
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-create-' . $clTRID);
         $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
         $to[] = '';
-        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <create>
-      <domain:create
-       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-        <domain:name>{{ name }}</domain:name>
-        <domain:period unit="y">{{ period }}</domain:period>
-        <domain:ns>
-          <domain:hostObj>{{ ns1 }}</domain:hostObj>
-          <domain:hostObj>{{ ns2 }}</domain:hostObj>
-          <domain:hostObj>{{ ns3 }}</domain:hostObj>
-          <domain:hostObj>{{ ns4 }}</domain:hostObj>
-          <domain:hostObj>{{ ns5 }}</domain:hostObj>
-        </domain:ns>
-        <domain:registrant>{{ cID_1 }}</domain:registrant>
-        <domain:contact type="admin">{{ cID_2 }}</domain:contact>
-        <domain:contact type="tech">{{ cID_3 }}</domain:contact>
-        <domain:contact type="billing">{{ cID_4 }}</domain:contact>
-        <domain:authInfo>
-          <domain:pw>{{ authInfo }}</domain:pw>
-        </domain:authInfo>
-      </domain:create>
-    </create>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
+        if (empty($params['gtld']) && empty($params['min_data_set'])) {
+            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+      <command>
+        <create>
+          <domain:create
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+            <domain:name>{{ name }}</domain:name>
+            <domain:period unit="y">{{ period }}</domain:period>
+            <domain:ns>
+              <domain:hostObj>{{ ns1 }}</domain:hostObj>
+              <domain:hostObj>{{ ns2 }}</domain:hostObj>
+              <domain:hostObj>{{ ns3 }}</domain:hostObj>
+              <domain:hostObj>{{ ns4 }}</domain:hostObj>
+              <domain:hostObj>{{ ns5 }}</domain:hostObj>
+            </domain:ns>
+            <domain:registrant>{{ cID_1 }}</domain:registrant>
+            <domain:contact type="admin">{{ cID_2 }}</domain:contact>
+            <domain:contact type="tech">{{ cID_3 }}</domain:contact>
+            <domain:contact type="billing">{{ cID_4 }}</domain:contact>
+            <domain:authInfo>
+              <domain:pw>{{ authInfo }}</domain:pw>
+            </domain:authInfo>
+          </domain:create>
+        </create>
+        <clTRID>{{ clTRID }}</clTRID>
+      </command>
+    </epp>');
+        } else {
+            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+      <command>
+        <create>
+          <domain:create
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+            <domain:name>{{ name }}</domain:name>
+            <domain:period unit="y">{{ period }}</domain:period>
+            <domain:ns>
+              <domain:hostObj>{{ ns1 }}</domain:hostObj>
+              <domain:hostObj>{{ ns2 }}</domain:hostObj>
+              <domain:hostObj>{{ ns3 }}</domain:hostObj>
+              <domain:hostObj>{{ ns4 }}</domain:hostObj>
+              <domain:hostObj>{{ ns5 }}</domain:hostObj>
+            </domain:ns>
+            <domain:authInfo>
+              <domain:pw>{{ authInfo }}</domain:pw>
+            </domain:authInfo>
+          </domain:create>
+        </create>
+        <clTRID>{{ clTRID }}</clTRID>
+      </command>
+    </epp>');
+        }
         $r = $s->write($xml, __FUNCTION__);
+        
+        if (!empty($params['gtld'])) {
+            // Check if the required module 'whmcs_registrar' is active
+            if (!Capsule::table('tbladdonmodules')->where('module', 'whmcs_registrar')->exists()) {
+                // Log an error if the module is not active
+                _epp_log('Error: Required module is not active.');
+            }
+        }
+        //TODO
+        if (empty($params['min_data_set'])) {
+            $contactIds = epp_insertContacts($params, $contacts);
+            epp_insertDomain($params, $contactIds);
+        } else {
+            epp_insertDomain($params, []);
+        }
+
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -380,13 +464,14 @@ function epp_RegisterDomain($params = array())
     return $return;
 }
 
-function epp_RenewDomain($params = array())
+function epp_RenewDomain(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -411,7 +496,8 @@ function epp_RenewDomain($params = array())
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->infData;
         $expDate = (string)$r->exDate;
         $expDate = preg_replace("/^(\d+\-\d+\-\d+)\D.*$/", "$1", $expDate);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ regperiod }}/';
@@ -440,10 +526,10 @@ function epp_RenewDomain($params = array())
         $r = $s->write($xml, __FUNCTION__);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -453,13 +539,14 @@ function epp_RenewDomain($params = array())
     return $return;
 }
 
-function epp_TransferDomain($params = array())
+function epp_TransferDomain(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ years }}/';
@@ -491,10 +578,10 @@ function epp_TransferDomain($params = array())
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -504,13 +591,14 @@ function epp_TransferDomain($params = array())
     return $return;
 }
 
-function epp_GetNameservers($params = array())
+function epp_GetNameservers(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -539,22 +627,31 @@ function epp_GetNameservers($params = array())
             $return["ns{$i}"] = (string)$ns;
         }
 
-        $status = array();
-        Capsule::table('epp_domain_status')->where('domain_id', '=', $params['domainid'])->delete();
-        foreach($r->status as $e) {
+        $status = [];
+        $domainId = $params['domainid'];
+        if (!empty($params['gtld'])) {
+            $domainId = epp_getWhmcsDomainIdFromNamingo($params['domainname']);
+        }
+        Capsule::table('epp_domain_status')->where('domain_id', $domainId)->delete();
+
+        foreach ($r->status as $e) {
             $st = (string)$e->attributes()->s;
-            if ($st == 'pendingDelete') {
-                $updatedDomainStatus = Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['status' => 'Cancelled']);
+
+            if ($st === 'pendingDelete') {
+                Capsule::table('tbldomains')->where('id', $domainId)->update(['status' => 'Cancelled']);
             }
 
-            Capsule::table('epp_domain_status')->insert(['domain_id' => $params['domainid'], 'status' => $st]);
+            Capsule::table('epp_domain_status')->insert([
+                'domain_id' => $domainId,
+                'status'    => $st,
+            ]);
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -564,13 +661,14 @@ function epp_GetNameservers($params = array())
     return $return;
 }
 
-function epp_SaveNameservers($params = array())
+function epp_SaveNameservers(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -623,7 +721,8 @@ function epp_SaveNameservers($params = array())
         }
 
         if (!empty($add) || !empty($rem)) {
-            $from = $to = array();
+            $from = $to = [];
+
             $text = '';
             foreach($add as $k => $v) {
                 $text.= '<domain:hostObj>' . $v . '</domain:hostObj>' . "\n";
@@ -664,10 +763,10 @@ function epp_SaveNameservers($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -677,13 +776,14 @@ function epp_SaveNameservers($params = array())
     return $return;
 }
 
-function epp_GetRegistrarLock($params = array())
+function epp_GetRegistrarLock(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
     $return = 'unlocked';
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -714,7 +814,7 @@ function epp_GetRegistrarLock($params = array())
         }
     }
 
-    catch(exception $e) {
+    catch (\Throwable $e) {
         $return = 'locked';
     }
 
@@ -725,13 +825,14 @@ function epp_GetRegistrarLock($params = array())
     return $return;
 }
 
-function epp_SaveRegistrarLock($params = array())
+function epp_SaveRegistrarLock(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -822,10 +923,10 @@ function epp_SaveRegistrarLock($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -835,13 +936,18 @@ function epp_SaveRegistrarLock($params = array())
     return $return;
 }
 
-function epp_GetContactDetails($params = array())
+function epp_GetContactDetails(array $params = [])
 {
+    if (!empty($params['min_data_set'])) {
+        return [];
+    }
+
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -877,7 +983,8 @@ function epp_GetContactDetails($params = array())
                 continue;
             }
 
-            $from = $to = array();
+            $from = $to = [];
+
             $from[] = '/{{ id }}/';
             $to[] = htmlspecialchars($id);
             $from[] = '/{{ clTRID }}/';
@@ -945,10 +1052,10 @@ function epp_GetContactDetails($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -958,13 +1065,18 @@ function epp_GetContactDetails($params = array())
     return $return;
 }
 
-function epp_SaveContactDetails($params = array())
+function epp_SaveContactDetails(array $params = [])
 {
+    if (!empty($params['min_data_set'])) {
+        return ['success' => true];
+    }
+
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1013,7 +1125,8 @@ function epp_SaveContactDetails($params = array())
                 continue;
             }
 
-            $from = $to = array();
+            $from = $to = [];
+
 
             $from[] = '/{{ id }}/';
             $to[] = htmlspecialchars($id);
@@ -1100,10 +1213,10 @@ function epp_SaveContactDetails($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1113,13 +1226,18 @@ function epp_SaveContactDetails($params = array())
     return $return;
 }
 
-function epp_IDProtectToggle($params = array())
+function epp_IDProtectToggle(array $params = [])
 {
+    if (!empty($params['min_data_set'])) {
+        return ['success' => true];
+    }
+
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1155,7 +1273,8 @@ function epp_IDProtectToggle($params = array())
                 continue;
             }
 
-            $from = $to = array();
+            $from = $to = [];
+
             $from[] = '/{{ id }}/';
             $to[] = htmlspecialchars($id);
 
@@ -1192,10 +1311,10 @@ function epp_IDProtectToggle($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1205,13 +1324,14 @@ function epp_IDProtectToggle($params = array())
     return $return;
 }
 
-function epp_GetEPPCode($params = array())
+function epp_GetEPPCode(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1243,10 +1363,10 @@ function epp_GetEPPCode($params = array())
         return array('eppcode' => $eppcode);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1256,13 +1376,14 @@ function epp_GetEPPCode($params = array())
     return $return;
 }
 
-function epp_RegisterNameserver($params = array())
+function epp_RegisterNameserver(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['nameserver']);
         $from[] = '/{{ clTRID }}/';
@@ -1288,7 +1409,8 @@ function epp_RegisterNameserver($params = array())
             throw new exception($r->cd[0]->name . " " . $r->cd[0]->reason);
         }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['nameserver']);
         $from[] = '/{{ ip }}/';
@@ -1316,10 +1438,10 @@ function epp_RegisterNameserver($params = array())
         $r = $s->write($xml, __FUNCTION__);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1329,13 +1451,14 @@ function epp_RegisterNameserver($params = array())
     return $return;
 }
 
-function epp_ModifyNameserver($params = array())
+function epp_ModifyNameserver(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['nameserver']);
         $from[] = '/{{ ip1 }}/';
@@ -1372,10 +1495,10 @@ function epp_ModifyNameserver($params = array())
         $r = $s->write($xml, __FUNCTION__);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1385,13 +1508,14 @@ function epp_ModifyNameserver($params = array())
     return $return;
 }
 
-function epp_DeleteNameserver($params = array())
+function epp_DeleteNameserver(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['nameserver']);
         $from[] = '/{{ clTRID }}/';
@@ -1414,10 +1538,10 @@ function epp_DeleteNameserver($params = array())
         $r = $s->write($xml, __FUNCTION__);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1427,13 +1551,14 @@ function epp_DeleteNameserver($params = array())
     return $return;
 }
 
-function epp_RequestDelete($params = array())
+function epp_RequestDelete(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1456,10 +1581,10 @@ function epp_RequestDelete($params = array())
         $r = $s->write($xml, __FUNCTION__);
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1469,10 +1594,10 @@ function epp_RequestDelete($params = array())
     return $return;
 }
 
-function epp_manageDNSSECDSRecords($params = array())
+function epp_manageDNSSECDSRecords(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
 
@@ -1482,7 +1607,8 @@ function epp_manageDNSSECDSRecords($params = array())
             $digestType = $_POST['digestType'];
             $digest = $_POST['digest'];
 
-            $from = $to = array();
+            $from = $to = [];
+
             $from[] = '/{{ name }}/';
             $to[] = htmlspecialchars($params['domainname']);
 
@@ -1537,7 +1663,8 @@ function epp_manageDNSSECDSRecords($params = array())
             $digestType = $_POST['digestType'];
             $digest = $_POST['digest'];
 
-            $from = $to = array();
+            $from = $to = [];
+
             $from[] = '/{{ name }}/';
             $to[] = htmlspecialchars($params['domainname']);
 
@@ -1586,7 +1713,8 @@ function epp_manageDNSSECDSRecords($params = array())
             $r = $s->write($xml, __FUNCTION__);
         }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1637,14 +1765,14 @@ function epp_manageDNSSECDSRecords($params = array())
         );
     }
 
-    catch(exception $e) {
-        $return = array(
+    catch (\Throwable $e) {
+        return [
             'templatefile' => 'manageDNSSECDSRecords',
             'requirelogin' => true,
-            'vars' => array(
-                'error' => $e->getMessage()
-            )
-        );
+            'vars' => [
+                'error' => $e->getMessage(),
+            ],
+        ];
     }
 
     if (!empty($s)) {
@@ -1657,18 +1785,21 @@ function epp_manageDNSSECDSRecords($params = array())
 function epp_ClientAreaCustomButtonArray()
 {
     $buttonarray = array(
-        Lang::Trans('Manage DNSSEC DS Records') => 'manageDNSSECDSRecords'
+        Lang::Trans('DNSSEC') => 'manageDNSSECDSRecords'
     );
     
     return $buttonarray;
 }
 
-function epp_AdminCustomButtonArray($params = array())
+function epp_AdminCustomButtonArray(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
 
-    $domainid = $params['domainid'];
-
+    if (!empty($params['gtld'])) {
+        $domainid = epp_getNamingoDomainId($params['domainid']);
+    } else {
+        $domainid = $params['domainid'];
+    }
     $buttons = [];
 
     // Check for hold status
@@ -1698,13 +1829,14 @@ function epp_AdminCustomButtonArray($params = array())
     return $buttons;
 }
 
-function epp_OnHoldDomain($params = array())
+function epp_OnHoldDomain(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1770,10 +1902,10 @@ function epp_OnHoldDomain($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1783,13 +1915,14 @@ function epp_OnHoldDomain($params = array())
     return $return;
 }
 
-function epp_UnHoldDomain($params = array())
+function epp_UnHoldDomain(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1850,10 +1983,10 @@ function epp_UnHoldDomain($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1865,10 +1998,11 @@ function epp_UnHoldDomain($params = array())
 
 function epp_ApproveTransfer($params) {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1892,10 +2026,10 @@ function epp_ApproveTransfer($params) {
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1907,10 +2041,11 @@ function epp_ApproveTransfer($params) {
 
 function epp_CancelTransfer($params) {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1934,10 +2069,10 @@ function epp_CancelTransfer($params) {
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1949,10 +2084,11 @@ function epp_CancelTransfer($params) {
 
 function epp_RejectTransfer($params) {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['domainname']);
         $from[] = '/{{ clTRID }}/';
@@ -1976,10 +2112,10 @@ function epp_RejectTransfer($params) {
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -1989,13 +2125,14 @@ function epp_RejectTransfer($params) {
     return $return;
 }
 
-function epp_TransferSync($params = array())
+function epp_TransferSync(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['sld'] . '.' . $params['tld']);
         $from[] = '/{{ clTRID }}/';
@@ -2020,7 +2157,11 @@ function epp_TransferSync($params = array())
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
         $trStatus = (string)$r->trStatus;
         $expDate = (string)$r->exDate;
-        $updatedDomainTrStatus = Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
+        if (!empty($params['gtld'])) {
+            Capsule::table('namingo_domain')->where('name', $params['domain'])->update(['trstatus' => $trStatus]);
+        } else {
+            $updatedDomainTrStatus = Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
+        }
 
         switch ($trStatus) {
             case 'pending':
@@ -2047,10 +2188,10 @@ function epp_TransferSync($params = array())
         return $return;
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -2060,13 +2201,14 @@ function epp_TransferSync($params = array())
     return $return;
 }
 
-function epp_Sync($params = array())
+function epp_Sync(array $params = [])
 {
     _epp_log(__FUNCTION__, $params);
-    $return = array();
+    $return = [];
     try {
         $s = _epp_startEppClient($params);
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ name }}/';
         $to[] = htmlspecialchars($params['sld'] . '.' . $params['tld']);
         $from[] = '/{{ clTRID }}/';
@@ -2090,6 +2232,7 @@ function epp_Sync($params = array())
         $r = $s->write($xml, __FUNCTION__);
         $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->infData;
         $expDate = (string)$r->exDate;
+        $roid = (string)$r->roid;
         $timestamp = strtotime($expDate);
 
         if ($timestamp === false) {
@@ -2099,6 +2242,17 @@ function epp_Sync($params = array())
         }
 
         $expDate = preg_replace("/^(\d+\-\d+\-\d+)\D.*$/", "$1", $expDate);
+
+        if (!empty($params['gtld'])) {
+            $formattedExpDate = date('Y-m-d H:i:s.000', $timestamp);
+
+            Capsule::table('namingo_domain')
+                ->where('name', $params['domain'])
+                ->update([
+                    'exdate' => $formattedExpDate,
+                    'registry_domain_id' => $roid
+                ]);
+        }
 
         if ($timestamp < time()) {
             return array(
@@ -2114,10 +2268,10 @@ function epp_Sync($params = array())
         }
     }
 
-    catch(exception $e) {
-        $return = array(
-            'error' => $e->getMessage()
-        );
+    catch (\Throwable $e) {
+        return [
+            'error' => $e->getMessage(),
+        ];
     }
 
     if (!empty($s)) {
@@ -2169,19 +2323,19 @@ class epp_epp_client
         }
         
         $tls_version = '1.2';
-        if ($this->params['tls_version'] == 'on') {
+        if (!empty($this->params['tls_version'])) {
             $tls_version = '1.3';
         }
-        
+
         $opts = array(
             'ssl' => array(
                 'verify_peer' => $ssl['verify_peer'],
                 'verify_peer_name' => false,
                 'verify_host' => false,
-                //'cafile' => __DIR__ . '/' . $ssl['cafile'],
+                'cafile' => __DIR__ . '/' . $ssl['cafile'],
                 'local_cert' => __DIR__ . '/' . $ssl['local_cert'],
                 'local_pk' => __DIR__ . '/' . $ssl['local_pk'],
-                //'passphrase' => $ssl['passphrase'],
+                'passphrase' => $ssl['passphrase'],
                 'allow_self_signed' => true
             )
         );
@@ -2198,7 +2352,8 @@ class epp_epp_client
 
     function login($login, $pwd, $prefix)
     {
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ clID }}/';
         $to[] = htmlspecialchars($login);
         $from[] = '/{{ pw }}/';
@@ -2241,7 +2396,8 @@ class epp_epp_client
             return true;
         }
 
-        $from = $to = array();
+        $from = $to = [];
+
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($prefix . '-logout-' . $clTRID);
@@ -2264,10 +2420,10 @@ class epp_epp_client
         _epp_log('================= read-this =================', $this);
         $hdr = stream_get_contents($this->socket, 4);
         if ($hdr === false) {
-        throw new exception('Connection appears to have closed.');
+            throw new exception('Connection appears to have closed.');
         }
         if (strlen($hdr) < 4) {
-        throw new exception('Failed to read header from the connection.');
+            throw new exception('Unable to connect to EPP server.');
         }
         $unpacked = unpack('N', $hdr);
         $xml = fread($this->socket, ($unpacked[1] - 4));
@@ -2281,13 +2437,13 @@ class epp_epp_client
         _epp_log('================= send-this =================', $this);
         _epp_log('================= send =================', $xml);
         if (fwrite($this->socket, pack('N', (strlen($xml) + 4)) . $xml) === false) {
-        throw new exception('Error writing to the connection.');
+            throw new exception('Error writing to the connection.');
         }
         $r = simplexml_load_string($this->read());
         _epp_modulelog($xml, $r, $action);
-            if (isset($r->response) && $r->response->result->attributes()->code >= 2000) {
-                throw new exception($r->response->result->msg);
-            }
+        if (isset($r->response) && $r->response->result->attributes()->code >= 2000) {
+            throw new exception($r->response->result->msg);
+        }
         return $r;
     }
 
@@ -2295,7 +2451,7 @@ class epp_epp_client
     {
         $result = fclose($this->socket);
         if (!$result) {
-             throw new exception('Error closing the connection.');
+            throw new exception('Error closing the connection.');
         }
         $this->socket = null;
         return $result;
@@ -2341,7 +2497,7 @@ class epp_epp_client
 
 function _epp_modulelog($send, $responsedata, $action)
 {
-    $from = $to = array();
+    $from = $to = [];
     $from[] = "/<clID>[^<]*<\/clID>/i";
     $to[] = '<clID>Not disclosed clID</clID>';
     $from[] = "/<pw>[^<]*<\/pw>/i";
@@ -2352,11 +2508,7 @@ function _epp_modulelog($send, $responsedata, $action)
 
 function _epp_log($func, $params = false)
 {
-
-    // comment line below to see logs
-    //return true;
-
-    $handle = fopen(dirname(__FILE__) . '/epp.log', 'a');
+   $handle = fopen(dirname(__FILE__) . '/epp.log', 'a');
     ob_start();
     echo "\n================= $func =================\n";
     print_r($params);
@@ -2368,7 +2520,6 @@ function _epp_log($func, $params = false)
 
 function _epp_create_table()
 {
-
     //    Capsule::schema()->table('tbldomains', function (Blueprint $table) {
     //        $table->increments('id')->unsigned()->change();
     //    });
@@ -2411,7 +2562,7 @@ function _epp_create_table()
             });
         }
 
-        catch(Exception $e) {
+        catch (\Throwable $e) {
             echo "Unable to create table 'epp_domain_status': {$e->getMessage() }";
         }
     }
@@ -2435,10 +2586,82 @@ function _epp_create_column()
             });
         }
 
-        catch(Exception $e) {
+        catch (\Throwable $e) {
             echo "Unable to alter table 'tbldomains' add column 'trstatus': {$e->getMessage() }";
         }
     }
 }
 
-?>
+function epp_insertContacts($params, $contacts) {
+    $contactIds = [];
+
+    for ($i = 1; $i <= 4; $i++) {
+        // Insert into namingo_contact table
+        $contactId = Capsule::table('namingo_contact')->insertGetId([
+            'identifier' => $contacts[$i],
+            'voice' => $params['fullphonenumber'],
+            'email' => $params['email'],
+            'name' => $params['firstname'] . ' ' . $params['lastname'],
+            'org' => $params['companyname'],
+            'street1' => $params['address1'],
+            'street2' => $params['address2'],
+            'street3' => $params['address3'],
+            'city' => $params['city'],
+            'sp' => $params['state'],
+            'pc' => $params['postcode'],
+            'cc' => $params['country'],        
+            'clid' => 1,
+            'crdate' => date('Y-m-d H:i:s.u')
+        ]);
+
+        // Save the last insert ID
+        $contactIds[] = $contactId;
+    }
+
+    return $contactIds;
+}
+
+function epp_insertDomain($params, $contactIds) {
+    // Calculate expiry date
+    $crdate = date('Y-m-d H:i:s.u');
+    $exdate = date('Y-m-d H:i:s.u', strtotime("+{$params['regperiod']} years"));
+
+    // Insert into namingo_domain table
+    $domainId = Capsule::table('namingo_domain')->insertGetId([
+        'name' => $params['domainname'],
+        'registry_domain_id' => '',
+        'clid' => 1,
+        'crid' => 1,
+        'crdate' => $crdate,
+        'exdate' => $exdate,
+        'registrant' => $contactIds[0] ?? null,     // Registrant contact ID
+        'admin' => $contactIds[1] ?? null,          // Admin contact ID
+        'tech' => $contactIds[2] ?? null,           // Tech contact ID
+        'billing' => $contactIds[3] ?? null,        // Billing contact ID
+        'ns1' => $params['ns1'] ?? null,    // Name servers
+        'ns2' => $params['ns2'] ?? null,
+        'ns3' => $params['ns3'] ?? null,
+        'ns4' => $params['ns4'] ?? null,
+        'ns5' => $params['ns5'] ?? null
+    ]);
+
+    return $domainId;
+}
+
+function epp_getNamingoDomainId($whmcsDomainId) {
+    $result = Capsule::selectOne("
+        SELECT namingo_domain.id
+        FROM namingo_domain
+        JOIN tbldomains ON LOWER(namingo_domain.name) = LOWER(tbldomains.domain)
+        WHERE tbldomains.id = ?
+        LIMIT 1
+    ", [$whmcsDomainId]);
+
+    return $result ? $result->id : null;
+}
+
+function epp_getWhmcsDomainIdFromNamingo($namingoDomainName) {
+    return Capsule::table('tbldomains')
+        ->whereRaw('LOWER(domain) = ?', [strtolower($namingoDomainName)])
+        ->value('id');
+}
