@@ -26,21 +26,8 @@ function epp_MetaData()
     );
 }
 
-function _epp_error_handler($errno, $errstr, $errfile, $errline)
-{
-    if (!preg_match("/epp/i", $errfile)) {
-        return true;
-    }
-
-    _epp_log("Error $errno:", "$errstr on line $errline in file $errfile");
-}
-
-set_error_handler('_epp_error_handler');
-_epp_log('================= ' . date("Y-m-d H:i:s") . ' =================');
-
 function epp_getConfigArray(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     if (empty($params['gtld'])) {
         _epp_create_table();
         _epp_create_column();
@@ -147,6 +134,13 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Use the ICANN Minimum Data Set.',
         ],
 
+        'set_authinfo_on_info' => [
+            'FriendlyName' => 'Set AuthInfo on Request',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  => 'Enable if the registry does not return the transfer code on domain info and requires setting it manually first.',
+        ],
+
     ];
 }
 
@@ -159,7 +153,6 @@ function _epp_startEppClient(array $params = [])
 
 function epp_RegisterDomain(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -437,7 +430,7 @@ function epp_RegisterDomain(array $params = [])
         if (!empty($params['gtld'])) {
             // Check if the required module 'whmcs_registrar' is active
             if (!Capsule::table('tbladdonmodules')->where('module', 'whmcs_registrar')->exists()) {
-                _epp_log('Error: Required module is not active.');
+                logModuleCall('epp', 'precheck', 'Required module is not active', ['module' => 'epp'], '');
             }
 
             if (empty($params['min_data_set'])) {
@@ -464,7 +457,6 @@ function epp_RegisterDomain(array $params = [])
 
 function epp_RenewDomain(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -539,7 +531,6 @@ function epp_RenewDomain(array $params = [])
 
 function epp_TransferDomain(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -591,7 +582,6 @@ function epp_TransferDomain(array $params = [])
 
 function epp_GetNameservers(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -661,7 +651,6 @@ function epp_GetNameservers(array $params = [])
 
 function epp_SaveNameservers(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -776,7 +765,6 @@ function epp_SaveNameservers(array $params = [])
 
 function epp_GetRegistrarLock(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = 'unlocked';
     try {
         $s = _epp_startEppClient($params);
@@ -825,7 +813,6 @@ function epp_GetRegistrarLock(array $params = [])
 
 function epp_SaveRegistrarLock(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -940,7 +927,6 @@ function epp_GetContactDetails(array $params = [])
         return [];
     }
 
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1069,7 +1055,6 @@ function epp_SaveContactDetails(array $params = [])
         return ['success' => true];
     }
 
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1230,7 +1215,6 @@ function epp_IDProtectToggle(array $params = [])
         return ['success' => true];
     }
 
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1324,37 +1308,78 @@ function epp_IDProtectToggle(array $params = [])
 
 function epp_GetEPPCode(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
         $from = $to = [];
+        
+        if (!empty($params['set_authinfo_on_info'])) {
+            $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            $symbols = '!@-';
 
-        $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
-        $from[] = '/{{ clTRID }}/';
-        $clTRID = str_replace('.', '', round(microtime(1), 3));
-        $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
-        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <info>
-      <domain:info
-       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-       xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
-        <domain:name hosts="all">{{ name }}</domain:name>
-      </domain:info>
-    </info>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-        $r = $s->write($xml, __FUNCTION__);
-        $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->infData;
-        $eppcode = (string)$r->authInfo->pw;
+            $authInfo = $symbols[random_int(0, strlen($symbols) - 1)];
+            $charLen = strlen($characters);
 
-        // If EPP Code is returned, return it for display to the end user
+            for ($i = 1; $i < 16; $i++) {
+                $authInfo .= $characters[random_int(0, $charLen - 1)];
+            }
+
+            $eppcode = str_shuffle($authInfo);
+
+            $from[] = '/{{ name }}/';
+            $to[] = htmlspecialchars($params['domainname']);
+            $from[] = '/{{ authInfo }}/';
+            $to[] = $eppcode;
+            $from[] = '/{{ clTRID }}/';
+            $clTRID = str_replace('.', '', round(microtime(1), 3));
+            $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
+            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+     <command>
+       <update>
+         <domain:update
+               xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
+               xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           <domain:name>{{ name }}</domain:name>
+           <domain:chg>
+             <domain:authInfo>
+               <domain:pw>{{ authInfo }}</domain:pw>
+             </domain:authInfo>
+           </domain:chg>
+         </domain:update>
+       </update>
+       <clTRID>{{ clTRID }}</clTRID>
+     </command>
+    </epp>');
+            $r = $s->write($xml, __FUNCTION__);
+        } else {
+            $from[] = '/{{ name }}/';
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
+            $from[] = '/{{ clTRID }}/';
+            $clTRID = str_replace('.', '', round(microtime(1), 3));
+            $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
+            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+      <command>
+        <info>
+          <domain:info
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
+           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+            <domain:name hosts="all">{{ name }}</domain:name>
+          </domain:info>
+        </info>
+        <clTRID>{{ clTRID }}</clTRID>
+      </command>
+    </epp>');
+            $r = $s->write($xml, __FUNCTION__);
+            $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->infData;
+            $eppcode = (string)$r->authInfo->pw;
+        }
+
         if (!empty($s)) {
             $s->logout($params['registrarprefix']);
         }
@@ -1376,7 +1401,6 @@ function epp_GetEPPCode(array $params = [])
 
 function epp_RegisterNameserver(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1451,7 +1475,6 @@ function epp_RegisterNameserver(array $params = [])
 
 function epp_ModifyNameserver(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1508,7 +1531,6 @@ function epp_ModifyNameserver(array $params = [])
 
 function epp_DeleteNameserver(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1551,7 +1573,6 @@ function epp_DeleteNameserver(array $params = [])
 
 function epp_RequestDelete(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1594,7 +1615,6 @@ function epp_RequestDelete(array $params = [])
 
 function epp_manageDNSSECDSRecords(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1791,8 +1811,6 @@ function epp_ClientAreaCustomButtonArray()
 
 function epp_AdminCustomButtonArray(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
-
     if (!empty($params['gtld'])) {
         $domainid = epp_getNamingoDomainId($params['domainid']);
     } else {
@@ -1829,7 +1847,6 @@ function epp_AdminCustomButtonArray(array $params = [])
 
 function epp_OnHoldDomain(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1915,7 +1932,6 @@ function epp_OnHoldDomain(array $params = [])
 
 function epp_UnHoldDomain(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -1995,7 +2011,6 @@ function epp_UnHoldDomain(array $params = [])
 }
 
 function epp_ApproveTransfer($params) {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -2038,7 +2053,6 @@ function epp_ApproveTransfer($params) {
 }
 
 function epp_CancelTransfer($params) {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -2081,7 +2095,6 @@ function epp_CancelTransfer($params) {
 }
 
 function epp_RejectTransfer($params) {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -2125,7 +2138,6 @@ function epp_RejectTransfer($params) {
 
 function epp_TransferSync(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -2201,7 +2213,6 @@ function epp_TransferSync(array $params = [])
 
 function epp_Sync(array $params = [])
 {
-    _epp_log(__FUNCTION__, $params);
     $return = [];
     try {
         $s = _epp_startEppClient($params);
@@ -2415,7 +2426,6 @@ class epp_epp_client
 
     function read()
     {
-        _epp_log('================= read-this =================', $this);
         $hdr = stream_get_contents($this->socket, 4);
         if ($hdr === false) {
             throw new exception('Connection appears to have closed.');
@@ -2425,15 +2435,11 @@ class epp_epp_client
         }
         $unpacked = unpack('N', $hdr);
         $xml = fread($this->socket, ($unpacked[1] - 4));
-        $xml = preg_replace('/></', ">\n<", $xml); 
-        _epp_log('================= read =================', $xml);
         return $xml;
     }
 
     function write($xml, $action = 'Unknown')
     {
-        _epp_log('================= send-this =================', $this);
-        _epp_log('================= send =================', $xml);
         if (fwrite($this->socket, pack('N', (strlen($xml) + 4)) . $xml) === false) {
             throw new exception('Error writing to the connection.');
         }
@@ -2497,23 +2503,15 @@ function _epp_modulelog($send, $responsedata, $action)
 {
     $from = $to = [];
     $from[] = "/<clID>[^<]*<\/clID>/i";
-    $to[] = '<clID>Not disclosed clID</clID>';
+    $to[] = '<clID>[REDACTED]</clID>';
     $from[] = "/<pw>[^<]*<\/pw>/i";
-    $to[] = '<pw>Not disclosed pw</pw>';
+    $to[]   = "<pw>[REDACTED]</pw>";
+    $from[] = "/<authInfo>.*?<\/authInfo>/is";
+    $to[]   = "<authInfo>[REDACTED]</authInfo>";
+    $from[] = "/<domain:authInfo>.*?<\/domain:authInfo>/is";
+    $to[]   = "<domain:authInfo>[REDACTED]</domain:authInfo>";
     $sendforlog = preg_replace($from, $to, $send);
     logModuleCall('epp',$action,$sendforlog,$responsedata);
-}
-
-function _epp_log($func, $params = false)
-{
-   $handle = fopen(dirname(__FILE__) . '/epp.log', 'a');
-    ob_start();
-    echo "\n================= $func =================\n";
-    print_r($params);
-    $text = ob_get_contents();
-    ob_end_clean();
-    fwrite($handle, $text);
-    fclose($handle);
 }
 
 function _epp_create_table()

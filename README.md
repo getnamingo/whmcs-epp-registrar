@@ -8,51 +8,47 @@ A generic WHMCS registrar module for connecting to any domain registry that uses
 
 This module is designed to work with both gTLD and ccTLD registries and provides a flexible foundation for EPP-based domain management in WHMCS.
 
-## Compatibility
+## Registry Support
 
-This module is supposed to work with:
-
-- Any Generic RFC EPP registry.
-
-- Caucasus Online - .ge
-
-- CentralNic - all
-
-- CoCCA - all
-
-- CORE/Knipp - all
-
-- GoDaddy Registry - all
-
-- Google Nomulus - all
-
-- HKIRC - .hk
-
-- Identity Digital - all
-
-- RoTLD - .ro
-
-- RyCE - all
-
-- SIDN - all
-
-- ZADNA - .za
-
-- ZDNS - .all
+| Registry | TLDs |
+|----------|----------|
+| Generic RFC EPP | any |
+| Caucasus Online | .ge |
+| CentralNic | all |
+| CoCCA | all |
+| CORE/Knipp | all |
+| GoDaddy Registry | all |
+| Google Nomulus | all |
+| Identity Digital | all |
+| IT.COM | all |
+| Namingo | all |
+| Regtons | all |
+| RoTLD | .ro |
+| RyCE | all |
+| SIDN | all |
+| Tucows Registry | all |
+| ZADNA | .za |
+| ZDNS | all |
 
 ## Installation
 
 1. Download and install [WHMCS](https://whmcs.com/)
 
-2. Place the repository as **epp** directory in `[WHMCS]/modules/registrars`, place your key.pem and cert.pem files in the same epp directory.
+2. Place the repository as **epp** directory in `[WHMCS_path]/modules/registrars`, place your key.pem and cert.pem files in the same epp directory.
 
-3. Activate from Configuration -> Apps & Integrations -> (search for _epp_) -> Activate
+3. Ensure correct file permissions:
+```bash
+chown -R www-data:www-data [WHMCS_path]/modules/registrars/epp
+chmod -R 755 [WHMCS_path]/modules/registrars/epp
+```
 
-4. Configure from Configuration -> System Settings -> Domain Registrars
+4. Activate from Configuration -> Apps & Integrations -> (search for _epp_) -> Activate
 
-5. Add a new TLD using Configuration -> System Settings -> Domain Pricing
+5. Configure from Configuration -> System Settings -> Domain Registrars
 
-6. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
+6. Add a new TLD using Configuration -> System Settings -> Domain Pricing
+
+7. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
 
 ```
 [
@@ -67,17 +63,6 @@ This module is supposed to work with:
 You should be good to go now.
 
 ## Troubleshooting
-
-### Fixing "Oops!" Issues in WHMCS
-
-If you experience "Oops!" or blank page errors in WHMCS after activating the EPP module, it might be caused by incorrect file permissions or ownership. Follow these steps to fix it:
-
-```bash
-chown -R www-data:www-data /var/www/html/whmcs/modules/registrars/epp
-chmod -R 755 /var/www/html/whmcs/modules/registrars/epp
-```
-
-Replace `/var/www/html/whmcs` with the path to your WHMCS installation, if different.
 
 ### Generating an SSL Certificate and Key
 
