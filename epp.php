@@ -166,7 +166,7 @@ function epp_RegisterDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-check-' . $clTRID);
@@ -345,7 +345,7 @@ function epp_RegisterDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ period }}/';
         $to[] = htmlspecialchars($params['regperiod']);
         $from[] = '/{{ ns1 }}/';
@@ -433,22 +433,20 @@ function epp_RegisterDomain(array $params = [])
     </epp>');
         }
         $r = $s->write($xml, __FUNCTION__);
-        
+
         if (!empty($params['gtld'])) {
             // Check if the required module 'whmcs_registrar' is active
             if (!Capsule::table('tbladdonmodules')->where('module', 'whmcs_registrar')->exists()) {
-                // Log an error if the module is not active
                 _epp_log('Error: Required module is not active.');
             }
-        }
-        //TODO
-        if (empty($params['min_data_set'])) {
-            $contactIds = epp_insertContacts($params, $contacts);
-            epp_insertDomain($params, $contactIds);
-        } else {
-            epp_insertDomain($params, []);
-        }
 
+            if (empty($params['min_data_set'])) {
+                $contactIds = epp_insertContacts($params, $contacts);
+                epp_insertDomain($params, $contactIds);
+            } else {
+                epp_insertDomain($params, []);
+            }
+        }
     }
 
     catch (\Throwable $e) {
@@ -473,7 +471,7 @@ function epp_RenewDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -499,7 +497,7 @@ function epp_RenewDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ regperiod }}/';
         $to[] = htmlspecialchars($params['regperiod']);
         $from[] = '/{{ expDate }}/';
@@ -548,7 +546,7 @@ function epp_TransferDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ years }}/';
         $to[] = htmlspecialchars($params['regperiod']);
         $from[] = '/{{ authInfo_pw }}/';
@@ -600,7 +598,7 @@ function epp_GetNameservers(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -630,7 +628,7 @@ function epp_GetNameservers(array $params = [])
         $status = [];
         $domainId = $params['domainid'];
         if (!empty($params['gtld'])) {
-            $domainId = epp_getWhmcsDomainIdFromNamingo($params['domainname']);
+            $domainId = epp_getWhmcsDomainIdFromNamingo($params['sld'] . '.' . ltrim($params['tld'], '.'));
         }
         Capsule::table('epp_domain_status')->where('domain_id', $domainId)->delete();
 
@@ -670,7 +668,7 @@ function epp_SaveNameservers(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -738,7 +736,7 @@ function epp_SaveNameservers(array $params = [])
             $from[] = '/{{ rem }}/';
             $to[] = (empty($text) ? '' : "<domain:rem><domain:ns>\n{$text}</domain:ns></domain:rem>\n");
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-update-' . $clTRID);
@@ -785,7 +783,7 @@ function epp_GetRegistrarLock(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -834,7 +832,7 @@ function epp_SaveRegistrarLock(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -898,7 +896,7 @@ function epp_SaveRegistrarLock(array $params = [])
             $from[] = '/{{ rem }}/';
             $to[] = (empty($text) ? '' : "<domain:rem>\n{$text}</domain:rem>\n");
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-update-' . $clTRID);
@@ -949,7 +947,7 @@ function epp_GetContactDetails(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1078,7 +1076,7 @@ function epp_SaveContactDetails(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1239,7 +1237,7 @@ function epp_IDProtectToggle(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1333,7 +1331,7 @@ function epp_GetEPPCode(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1560,7 +1558,7 @@ function epp_RequestDelete(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-delete-' . $clTRID);
@@ -1610,7 +1608,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
             $from = $to = [];
 
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
 
             $from[] = '/{{ keyTag }}/';
             $to[] = htmlspecialchars($keyTag);
@@ -1666,7 +1664,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
             $from = $to = [];
 
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
 
             $from[] = '/{{ keyTag }}/';
             $to[] = htmlspecialchars($keyTag);
@@ -1716,7 +1714,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1838,7 +1836,7 @@ function epp_OnHoldDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1876,7 +1874,7 @@ function epp_OnHoldDomain(array $params = [])
 
         if ($existing_status == 'ok') {
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-update-' . $clTRID);
@@ -1924,7 +1922,7 @@ function epp_UnHoldDomain(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -1957,7 +1955,7 @@ function epp_UnHoldDomain(array $params = [])
 
         if ($existing_status == 'clientHold') {
             $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
+            $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-update-' . $clTRID);
@@ -2004,7 +2002,7 @@ function epp_ApproveTransfer($params) {
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
@@ -2047,7 +2045,7 @@ function epp_CancelTransfer($params) {
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
@@ -2090,7 +2088,7 @@ function epp_RejectTransfer($params) {
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['domainname']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
@@ -2628,7 +2626,7 @@ function epp_insertDomain($params, $contactIds) {
 
     // Insert into namingo_domain table
     $domainId = Capsule::table('namingo_domain')->insertGetId([
-        'name' => $params['domainname'],
+        'name' => $params['sld'] . '.' . ltrim($params['tld'], '.'),
         'registry_domain_id' => '',
         'clid' => 1,
         'crid' => 1,
