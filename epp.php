@@ -651,6 +651,139 @@ function epp_GetNameservers(array $params = [])
     return $return;
 }
 
+function epp_GetDomainInformation(array $params = [])
+{
+    try {
+        $s = _epp_startEppClient($params);
+
+        $from = $to = [];
+
+        $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+
+        $from[] = '/{{ name }}/';
+        $to[]   = htmlspecialchars($domain, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+
+        $from[] = '/{{ clTRID }}/';
+        $clTRID = str_replace('.', '', round(microtime(1), 3));
+        $to[]   = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+
+        $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <info>
+      <domain:info
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+        <domain:name hosts="all">{{ name }}</domain:name>
+      </domain:info>
+    </info>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+
+        $r   = $s->write($xml, __FUNCTION__);
+        $inf = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->infData;
+
+        // Nameservers
+        $nameservers = [];
+        $i = 0;
+        if (!empty($inf->ns) && !empty($inf->ns->hostObj)) {
+            foreach ($inf->ns->hostObj as $ns) {
+                $i++;
+                $nameservers[] = (string) $ns;
+            }
+        }
+
+        // Transfer lock (clientTransferProhibited => locked)
+        $transferLock = false;
+
+        $domainId = $params['domainid'];
+        if (!empty($params['gtld'])) {
+            $domainId = epp_getWhmcsDomainIdFromNamingo($domain);
+        }
+
+        Capsule::table('epp_domain_status')->where('domain_id', $domainId)->delete();
+
+        foreach ($inf->status as $e) {
+            $st = (string) $e->attributes()->s;
+
+            if ($st === 'pendingDelete') {
+                Capsule::table('tbldomains')->where('id', $domainId)->update(['status' => 'Cancelled']);
+            }
+
+            if (preg_match("/clientTransferProhibited/i", $st)) {
+                $transferLock = true;
+            }
+
+            Capsule::table('epp_domain_status')->insert([
+                'domain_id' => $domainId,
+                'status'    => $st,
+            ]);
+        }
+
+        $expiryDate = null;
+        if (!empty($inf->exDate)) {
+            $date = substr((string) $inf->exDate, 0, 10);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                $expiryDate = Carbon::createFromFormat('Y-m-d', $date);
+            }
+        }
+        
+        // Default
+        $registrationStatus = Domain::STATUS_ACTIVE;
+
+        foreach ($inf->status as $e) {
+            $st = (string) $e->attributes()->s;
+
+            switch ($st) {
+                case 'pendingDelete':
+                    $registrationStatus = Domain::STATUS_PENDING_DELETE;
+                    break 2;
+
+                case 'serverHold':
+                case 'clientHold':
+                    $registrationStatus = Domain::STATUS_SUSPENDED;
+                    break;
+
+                case 'expired':
+                    $registrationStatus = Domain::STATUS_EXPIRED;
+                    break;
+
+                case 'inactive':
+                    $registrationStatus = Domain::STATUS_INACTIVE;
+                    break;
+
+                case 'serverDeleteProhibited':
+                case 'clientDeleteProhibited':
+                    $registrationStatus = Domain::STATUS_ACTIVE;
+                    break;
+            }
+        }
+
+        $domainObj = (new Domain())
+            ->setDomain($domain)
+            ->setNameservers($nameservers)
+            ->setRegistrationStatus($registrationStatus)
+            ->setTransferLock($transferLock);
+
+        if ($expiryDate) {
+            $domainObj->setExpiryDate($expiryDate);
+        }
+
+        return $domainObj;
+    } catch (\Throwable $e) {
+        throw new \Exception($e->getMessage());
+    }
+
+    finally {
+        if (!empty($s)) {
+            $s->logout($params['registrarprefix']);
+        }
+    }
+}
+
 function epp_SaveNameservers(array $params = [])
 {
     $return = [];
@@ -1013,16 +1146,18 @@ function epp_SaveRegistrarLock(array $params = [])
         }
 
         if (!empty($add) || !empty($rem)) {
+            $from = $to = [];
+
             $text = '';
             foreach($add as $st) {
-                $text.= '<domain:status s="' . $st . '" lang="en"></domain:status>' . "\n";
+                $text.= '<domain:status s="' . $st . '"></domain:status>' . "\n";
             }
 
             $from[] = '/{{ add }}/';
             $to[] = (empty($text) ? '' : "<domain:add>\n{$text}</domain:add>\n");
             $text = '';
             foreach($rem as $st) {
-                $text.= '<domain:status s="' . $st . '" lang="en"></domain:status>' . "\n";
+                $text.= '<domain:status s="' . $st . '"></domain:status>' . "\n";
             }
 
             $from[] = '/{{ rem }}/';
