@@ -17,6 +17,8 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
 use WHMCS\Carbon;
 use WHMCS\Domain\Registrar\Domain;
+use WHMCS\Domains\DomainLookup\ResultsList;
+use WHMCS\Domains\DomainLookup\SearchResult;
 
 function epp_MetaData()
 {
@@ -708,6 +710,74 @@ function epp_SaveNameservers(array $params = [])
         }
 
         if (!empty($add) || !empty($rem)) {
+            // Ensure new nameserver hosts exist
+            foreach ($add as $k => $nsName) {
+                $nsName = trim((string)$nsName);
+                if ($nsName === '') {
+                    continue;
+                }
+
+                // host:check
+                $from = $to = [];
+
+                $from[] = '/{{ name }}/';
+                $to[]   = htmlspecialchars($nsName);
+
+                $from[] = '/{{ clTRID }}/';
+                $clTRID = str_replace('.', '', round(microtime(1), 3));
+                $to[]   = htmlspecialchars($params['registrarprefix'] . '-host-check-' . $clTRID);
+
+                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <check>
+      <host:check
+        xmlns:host="urn:ietf:params:xml:ns:host-1.0"
+        xsi:schemaLocation="urn:ietf:params:xml:ns:host-1.0 host-1.0.xsd">
+        <host:name>{{ name }}</host:name>
+      </host:check>
+    </check>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+
+                $r = $s->write($xml, __FUNCTION__);
+                $chk = $r->response->resData->children('urn:ietf:params:xml:ns:host-1.0')->chkData;
+
+                // If host exists already, avail="0" (so nothing to do)
+                if (0 == (int)$chk->cd[0]->name->attributes()->avail) {
+                    continue;
+                }
+
+                // host:create
+                $from = $to = [];
+
+                $from[] = '/{{ name }}/';
+                $to[]   = htmlspecialchars($nsName);
+
+                $from[] = '/{{ clTRID }}/';
+                $clTRID = str_replace('.', '', round(microtime(1), 3));
+                $to[]   = htmlspecialchars($params['registrarprefix'] . '-host-create-' . $clTRID);
+
+                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <create>
+      <host:create xmlns:host="urn:ietf:params:xml:ns:host-1.0">
+        <host:name>{{ name }}</host:name>
+      </host:create>
+    </create>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+
+                $s->write($xml, __FUNCTION__);
+            }
+
             $from = $to = [];
 
             $text = '';
@@ -739,8 +809,8 @@ function epp_SaveNameservers(array $params = [])
        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
         <domain:name>{{ name }}</domain:name>
-    {{ add }}
-    {{ rem }}
+        {{ add }}
+        {{ rem }}
       </domain:update>
     </update>
     <clTRID>{{ clTRID }}</clTRID>
@@ -761,6 +831,81 @@ function epp_SaveNameservers(array $params = [])
     }
 
     return $return;
+}
+
+function epp_CheckAvailability(array $params = [])
+{
+    try {
+        $s = _epp_startEppClient($params);
+
+        $searchTerm         = trim((string) ($params['searchTerm'] ?? ''));
+        $punyCodeSearchTerm = trim((string) ($params['punyCodeSearchTerm'] ?? ''));
+        $tldsToInclude      = (array)  ($params['tldsToInclude'] ?? []);
+        $isIdnDomain        = (bool)   ($params['isIdnDomain'] ?? false);
+
+        $label = $isIdnDomain && $punyCodeSearchTerm ? $punyCodeSearchTerm : $searchTerm;
+        $label = ltrim(strtolower($label), '.');
+
+        $results = new ResultsList();
+
+        foreach ($tldsToInclude as $tld) {
+            $tld = ltrim(strtolower((string) $tld), '.');
+            if ($tld === '' || $label === '') {
+                continue;
+            }
+
+            $fqdn = $label . '.' . $tld;
+
+            $from = $to = [];
+            $from[] = '/{{ name }}/';
+            $to[]   = htmlspecialchars($fqdn);
+
+            $from[] = '/{{ clTRID }}/';
+            $clTRID = str_replace('.', '', round(microtime(true), 3));
+            $to[]   = htmlspecialchars($params['registrarprefix'] . '-domain-check-' . $clTRID);
+
+            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+  <command>
+    <check>
+      <domain:check
+        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
+        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+        <domain:name>{{ name }}</domain:name>
+      </domain:check>
+    </check>
+    <clTRID>{{ clTRID }}</clTRID>
+  </command>
+</epp>');
+
+            $r = $s->write($xml, __FUNCTION__);
+
+            $chkData = $r->response->resData
+                ->children('urn:ietf:params:xml:ns:domain-1.0')
+                ->chkData;
+
+            $avail  = (int) ($chkData->cd[0]->name->attributes()->avail ?? 0);
+            $reason = (string) ($chkData->cd[0]->reason ?? '');
+
+            $searchResult = new SearchResult($label, $tld);
+
+            if ($avail === 1) {
+                $searchResult->setStatus(SearchResult::STATUS_NOT_REGISTERED);
+            } else {
+                // TODO: Premium domains
+                $searchResult->setStatus(SearchResult::STATUS_REGISTERED);
+            }
+
+            $results->append($searchResult);
+        }
+
+        return $results;
+
+    } catch (\Exception $e) {
+        return ['error' => $e->getMessage()];
+    }
 }
 
 function epp_GetRegistrarLock(array $params = [])
@@ -1340,8 +1485,8 @@ function epp_GetEPPCode(array $params = [])
      <command>
        <update>
          <domain:update
-               xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-               xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+          xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
+          xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
            <domain:name>{{ name }}</domain:name>
            <domain:chg>
              <domain:authInfo>
@@ -1905,9 +2050,9 @@ function epp_OnHoldDomain(array $params = [])
        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
         <domain:name>{{ name }}</domain:name>
-            <domain:add>
-                 <domain:status s="clientHold" lang="en">clientHold</domain:status>
-               </domain:add>
+        <domain:add>
+          <domain:status s="clientHold" lang="en">clientHold</domain:status>
+        </domain:add>
       </domain:update>
     </update>
     <clTRID>{{ clTRID }}</clTRID>
@@ -1985,9 +2130,9 @@ function epp_UnHoldDomain(array $params = [])
        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
         <domain:name>{{ name }}</domain:name>
-            <domain:rem>
-                 <domain:status s="clientHold" lang="en">clientHold</domain:status>
-               </domain:rem>
+        <domain:rem>
+          <domain:status s="clientHold" lang="en">clientHold</domain:status>
+        </domain:rem>
       </domain:update>
     </update>
     <clTRID>{{ clTRID }}</clTRID>
@@ -2144,7 +2289,7 @@ function epp_TransferSync(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['sld'] . '.' . $params['tld']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-transfer-' . $clTRID);
@@ -2170,7 +2315,7 @@ function epp_TransferSync(array $params = [])
         if (!empty($params['gtld'])) {
             Capsule::table('namingo_domain')->where('name', $params['domain'])->update(['trstatus' => $trStatus]);
         } else {
-            $updatedDomainTrStatus = Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
+            Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
         }
 
         switch ($trStatus) {
@@ -2219,7 +2364,7 @@ function epp_Sync(array $params = [])
         $from = $to = [];
 
         $from[] = '/{{ name }}/';
-        $to[] = htmlspecialchars($params['sld'] . '.' . $params['tld']);
+        $to[] = htmlspecialchars($params['sld'] . '.' . ltrim($params['tld'], '.'));
         $from[] = '/{{ clTRID }}/';
         $clTRID = str_replace('.', '', round(microtime(1), 3));
         $to[] = htmlspecialchars($params['registrarprefix'] . '-domain-info-' . $clTRID);
@@ -2320,13 +2465,6 @@ class epp_epp_client
 
     function connect($host, $port = 700, $ssl, $timeout = 30)
     {
-        ini_set('display_errors', true);
-        error_reporting(E_ALL);
-
-        // echo '<pre>';print_r($host);
-        // print_r($this->params);
-        // exit;
-
         if ($host != $this->params['host']) {
             throw new exception("Unknown EPP server '$host'");
         }
@@ -2618,11 +2756,9 @@ function epp_insertContacts($params, $contacts) {
 }
 
 function epp_insertDomain($params, $contactIds) {
-    // Calculate expiry date
     $crdate = date('Y-m-d H:i:s.u');
     $exdate = date('Y-m-d H:i:s.u', strtotime("+{$params['regperiod']} years"));
 
-    // Insert into namingo_domain table
     $domainId = Capsule::table('namingo_domain')->insertGetId([
         'name' => $params['sld'] . '.' . ltrim($params['tld'], '.'),
         'registry_domain_id' => '',
@@ -2630,11 +2766,11 @@ function epp_insertDomain($params, $contactIds) {
         'crid' => 1,
         'crdate' => $crdate,
         'exdate' => $exdate,
-        'registrant' => $contactIds[0] ?? null,     // Registrant contact ID
-        'admin' => $contactIds[1] ?? null,          // Admin contact ID
-        'tech' => $contactIds[2] ?? null,           // Tech contact ID
-        'billing' => $contactIds[3] ?? null,        // Billing contact ID
-        'ns1' => $params['ns1'] ?? null,    // Name servers
+        'registrant' => $contactIds[0] ?? null,
+        'admin' => $contactIds[1] ?? null,
+        'tech' => $contactIds[2] ?? null,
+        'billing' => $contactIds[3] ?? null,
+        'ns1' => $params['ns1'] ?? null,
         'ns2' => $params['ns2'] ?? null,
         'ns3' => $params['ns3'] ?? null,
         'ns4' => $params['ns4'] ?? null,
@@ -2648,7 +2784,7 @@ function epp_getNamingoDomainId($whmcsDomainId) {
     $result = Capsule::selectOne("
         SELECT namingo_domain.id
         FROM namingo_domain
-        JOIN tbldomains ON LOWER(namingo_domain.name) = LOWER(tbldomains.domain)
+        JOIN tbldomains ON namingo_domain.name = tbldomains.domain
         WHERE tbldomains.id = ?
         LIMIT 1
     ", [$whmcsDomainId]);
@@ -2657,7 +2793,9 @@ function epp_getNamingoDomainId($whmcsDomainId) {
 }
 
 function epp_getWhmcsDomainIdFromNamingo($namingoDomainName) {
+    $namingoDomainName = strtolower($namingoDomainName);
+
     return Capsule::table('tbldomains')
-        ->whereRaw('LOWER(domain) = ?', [strtolower($namingoDomainName)])
+        ->where('domain', $namingoDomainName)
         ->value('id');
 }
