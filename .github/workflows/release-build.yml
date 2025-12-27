@@ -18,20 +18,17 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
+          php-version: "8.3"
           tools: composer:v2
 
       - name: Validate composer.json
         run: composer validate --no-interaction
 
-      # "Always most recent" -> update at release build time
       - name: Composer update (no-dev)
         run: |
-          composer update --no-dev --prefer-dist --no-interaction --no-progress
-
-      - name: Composer install (no-dev)
-        run: |
-          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+          composer clear-cache
+          composer update pinga/tembo --no-dev -W --prefer-dist --no-interaction --no-progress
+          composer show pinga/tembo
 
       # Adjust MODULE_DIR to match what you want inside the archive
       # Example: if your repo root IS the module folder, keep "."

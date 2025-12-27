@@ -4,7 +4,7 @@
   "type": "project",
   "license": "MIT",
   "require": {
-    "php": ">=8.2",
-    "pinga/tembo": "*"
+    "php": ">=8.3",
+    "pinga/tembo": "^1.1.9"
   }
 }
