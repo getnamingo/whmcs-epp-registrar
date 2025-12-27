@@ -82,19 +82,11 @@
                 <label for="alg1" class="col-md-4 col-form-label">Algorithm</label>
                 <div class="col-md-6">
                     <select name="alg" data-supported="True" class="form-control" id="alg1" data-required="True" data-previousvalue="">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8</option>
-                        <option value="10">10</option>
-                        <option value="12">12</option>
-                        <option value="13">13</option>
-                        <option value="253">253</option>
-                        <option value="254">254</option>
+                        <option value="8">RSA/SHA-256 (8)</option>
+                        <option value="13">ECDSA Curve P-256 with SHA-256 (13)</option>
+                        <option value="14">ECDSA Curve P-384 with SHA-384 (14)</option>
+                        <option value="15">Ed25519 (15)</option>
+                        <option value="16">Ed448 (16)</option>
                     </select>
                 </div>
             </div>
@@ -102,8 +94,8 @@
                 <label for="digestType" class="col-md-4 col-form-label">Digest type</label>
                 <div class="col-md-6">
                     <select name="digestType" class="form-control" id="digestType" data-supported="True" data-required="True" data-previousvalue="">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
+                        <option value="2">SHA-256 (2)</option>
+                        <option value="4">SHA-384 (4)</option>
                     </select>
                 </div>
             </div>

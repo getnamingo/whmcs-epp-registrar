@@ -1,0 +1,65 @@
+name: Build release archives (with composer)
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --no-interaction
+
+      # "Always most recent" -> update at release build time
+      - name: Composer update (no-dev)
+        run: |
+          composer update --no-dev --prefer-dist --no-interaction --no-progress
+
+      - name: Composer install (no-dev)
+        run: |
+          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+      # Adjust MODULE_DIR to match what you want inside the archive
+      # Example: if your repo root IS the module folder, keep "."
+      # If your repo contains WHMCS tree, set this to "modules/registrars/epp"
+      - name: Build archives
+        env:
+          MODULE_DIR: "."
+        run: |
+          set -euxo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          NAME="whmcs-epp-${TAG}"
+
+          mkdir -p dist
+          rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "dist" \
+            --exclude "tests" \
+            --exclude ".editorconfig" \
+            --exclude ".gitignore" \
+            "${MODULE_DIR}/" "dist/${NAME}/"
+
+          (cd dist && zip -r "${NAME}.zip" "${NAME}")
+          (cd dist && tar -czf "${NAME}.tar.gz" "${NAME}")
+
+      - name: Upload ZIP to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
