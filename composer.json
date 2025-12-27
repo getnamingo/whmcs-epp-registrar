@@ -1,5 +1,10 @@
 {
-    "require": {
-        "pinga/tembo": "*"
-    }
+  "name": "namingo/whmcs-epp-registrar",
+  "description": "A generic WHMCS registrar module for connecting to any domain registry that uses the EPP protocol.",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.3",
+    "pinga/tembo": "*"
+  },
 }
