@@ -16,7 +16,6 @@ if (!defined("WHMCS")) {
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
     require_once __DIR__ . '/vendor/autoload.php';
 }
-require_once __DIR__ . '/lib/epp.php';
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,6 +23,7 @@ use WHMCS\Carbon;
 use WHMCS\Domain\Registrar\Domain;
 use WHMCS\Domains\DomainLookup\ResultsList;
 use WHMCS\Domains\DomainLookup\SearchResult;
+use Pinga\Tembo\EppRegistryFactory;
 
 function epp_MetaData()
 {
@@ -36,8 +36,8 @@ function epp_MetaData()
 function epp_getConfigArray(array $params = [])
 {
     if (empty($params['gtld'])) {
-        _epp_create_table();
-        _epp_create_column();
+        epp_create_table();
+        epp_create_column();
     }
 
     return [
@@ -459,15 +459,15 @@ function epp_GetDomainInformation(array $params = [])
 
         // Nameservers
         $nameservers = [];
-        $i = 0;
+        $i = 1;
 
         foreach (($info['ns'] ?? []) as $ns) {
             if ($ns === null || $ns === '') {
                 continue;
             }
 
+            $nameservers['ns' . $i] = (string) $ns;
             $i++;
-            $nameservers[] = (string)$ns;
         }
 
         // Transfer lock (clientTransferProhibited => locked)
@@ -1725,7 +1725,7 @@ function epp_Sync(array $params = [])
     }
 }
 
-function _epp_modulelog($send, $responsedata, $action)
+function epp_modulelog($send, $responsedata, $action)
 {
     $from = $to = [];
     $from[] = "/<clID>[^<]*<\/clID>/i";
@@ -1740,7 +1740,7 @@ function _epp_modulelog($send, $responsedata, $action)
     logModuleCall('epp',$action,$sendforlog,$responsedata);
 }
 
-function _epp_create_table()
+function epp_create_table()
 {
     if (!Capsule::schema()->hasTable('epp_domain_status')) {
         try {
@@ -1782,7 +1782,7 @@ function _epp_create_table()
     }
 }
 
-function _epp_create_column()
+function epp_create_column()
 {
     if (!Capsule::schema()->hasColumn('tbldomains', 'trstatus')) {
         try {
@@ -1910,4 +1910,96 @@ function epp_random_auth_pw(int $len = 16): string {
     }
 
     return $result;
+}
+
+function epp_client(array $params)
+{
+    $profile = $params['epp_profile'] ?? 'generic';
+
+    $epp = EppRegistryFactory::create($profile);
+    $epp->disableLogging();
+
+    $tls_version = '1.2';
+    if (!empty($params['tls_version'])) {
+        $tls_version = '1.3';
+    }
+    
+    $verify_peer = false;
+    if ($params['verify_peer'] == 'on') {
+        $verify_peer = true;
+    }
+
+    $moduleDir = __DIR__;
+
+    $certPath = trim($params['local_cert'] ?? '');
+    $keyPath  = trim($params['local_pk'] ?? '');
+
+    if ($certPath === '' || $keyPath === '') {
+        throw new \RuntimeException('Client certificate and private key are required.');
+    }
+
+    if ($certPath[0] !== '/' && !preg_match('~^[A-Za-z]:[\\\\/]~', $certPath)) {
+        $certPath = $moduleDir . '/' . $certPath;
+    }
+    if ($keyPath[0] !== '/' && !preg_match('~^[A-Za-z]:[\\\\/]~', $keyPath)) {
+        $keyPath = $moduleDir . '/' . $keyPath;
+    }
+
+    $certPath = realpath($certPath);
+    $keyPath  = realpath($keyPath);
+
+    if ($certPath === false || $keyPath === false) {
+        throw new \RuntimeException(
+            'EPP TLS certificate or key not found or not readable. '
+            . 'cert=' . ($certPath ?: 'false') . ' key=' . ($keyPath ?: 'false')
+        );
+    }
+
+    // Build connection info from WHMCS module settings
+    $info = [
+        'host'    => $params['host'] ?? '',
+        'port'    => (int)($params['port'] ?? 700),
+        'timeout' => 30,
+        'tls'     => $tls_version ?? '1.2',
+        'bind'    => false,
+        'bindip'  => '1.2.3.4:0',
+        'verify_peer'      => !empty($verify_peer),
+        'verify_peer_name' => false,
+        'cafile'           => $params['cafile'] ?? '',
+        'local_cert' => $certPath,
+        'local_pk' => $keyPath,
+        'passphrase'       => $params['passphrase'] ?? '',
+        'allow_self_signed'=> true,
+    ];
+    $raw = $params['login_extensions'] ?? '';
+    $info['loginExtensions'] = trim($raw) !== ''
+        ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $raw))))
+        : [
+            'urn:ietf:params:xml:ns:secDNS-1.1',
+            'urn:ietf:params:xml:ns:rgp-1.0',
+        ];
+    $epp->setLoginExtensions($info['loginExtensions']);
+
+    if (empty($info['host']) || empty($info['port'])) {
+        throw new \RuntimeException('EPP host/port not configured');
+    }
+
+    $epp->connect($info);
+
+    $login = $epp->login([
+        'clID'   => $params['clid'] ?? '',
+        'pw'     => $params['pw'] ?? '',
+        'prefix' => $params['registrarprefix'] ?? 'epp',
+    ]);
+
+    if (isset($login['error'])) {
+        throw new \RuntimeException('Login Error: ' . $login['error']);
+    }
+
+    return $epp;
+}
+
+function epp_client_logout($epp)
+{
+    try { $epp->logout(); } catch (\Throwable $e) {}
 }
