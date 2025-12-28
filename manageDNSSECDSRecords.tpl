@@ -27,7 +27,7 @@
                     <td>{$item.keyTag}</td>
                     <td>{$item.alg}</td>
                     <td>{$item.digestType}</td>
-                    <td class="text-break" style="max-width: 300px;">
+                    <td class="text-break font-monospace" style="max-width:300px;">
                         {$item.digest}
                     </td>
                     <td class="text-center">
@@ -43,7 +43,7 @@
                             <input type="hidden" name="digestType" value="{$item.digestType}" />
                             <input type="hidden" name="digest" value="{$item.digest}" />
 
-                            <button type="submit" class="btn btn-sm btn-danger">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove this DS record?');">
                                 Remove
                             </button>
                         </form>
