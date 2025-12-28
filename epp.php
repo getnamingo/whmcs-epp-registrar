@@ -1049,6 +1049,7 @@ function epp_IDProtectToggle(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $flag = empty($params['idprotection']) ? 1 : 0;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1084,9 +1085,8 @@ function epp_IDProtectToggle(array $params = [])
             }
             
             $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $flag = $params['protectenable'] ? 1 : 0;
 
-            $params = array(
+            $xml = array(
                 'xml' => '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
         <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -1110,7 +1110,7 @@ function epp_IDProtectToggle(array $params = [])
           </command>
         </epp>
         ');
-            $rawXml = $epp->rawXml($params);
+            $rawXml = $epp->rawXml($xml);
             
             if (isset($rawXml['error'])) {
                 throw new \Exception($rawXml['error']);
