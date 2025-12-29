@@ -10,25 +10,27 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 
 ## Registry Support
 
-| Registry | TLDs |
-|----------|----------|
-| Generic RFC EPP | any |
-| Caucasus Online | .ge |
-| CentralNic | all |
-| CoCCA | all |
-| CORE/Knipp | all |
-| GoDaddy Registry | all |
-| Google Nomulus | all |
-| Identity Digital | all |
-| IT.COM | all |
-| Namingo | all |
-| Regtons | all |
-| RoTLD | .ro |
-| RyCE | all |
-| SIDN | all |
-| Tucows Registry | all |
-| ZADNA | .za |
-| ZDNS | all |
+| Registry | TLDs | Profile |
+|----------|----------|----------|
+| Generic RFC EPP | any | |
+| Caucasus Online | .ge | |
+| CentralNic | all | |
+| CoCCA | all | |
+| CORE/Knipp | all | |
+| GoDaddy Registry | all | |
+| Google Nomulus | all | |
+| Hostmaster | .ua | UA |
+| Identity Digital | all | |
+| IT.COM | all | |
+| Namingo | all | |
+| Regtons | all | |
+| RoTLD | .ro | |
+| RyCE | all | |
+| SIDN | all | |
+| Tucows Registry | all | |
+| Verisign | all | VRSN |
+| ZADNA | .za | |
+| ZDNS | all | |
 
 ## Installation
 
