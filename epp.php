@@ -127,12 +127,12 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Prefix used when generating registry object IDs (contacts/hosts). Use the value required by the registry, if any.',
         ],
 
-        'epp_profile' => [
-            'FriendlyName' => 'EPP Profile',
+        'registry_profile' => [
+            'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
             'Options'      => 'generic,EU,UA,VRSN',
             'Default'     => 'generic',
-            'Description' => 'Select the EPP profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
+            'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
 
         'set_authinfo_on_info' => [
@@ -217,7 +217,7 @@ function epp_RegisterDomain(array $params = [])
                 'generic'=> ['registrant', 'admin', 'tech', 'billing'],
             ];
 
-            $profile = $params['epp_profile'] ?? 'generic';
+            $profile = $params['registry_profile'] ?? 'generic';
 
             $contactTypes = $contactTypeMap[$profile]
                 ?? $contactTypeMap['generic'];
@@ -256,7 +256,7 @@ function epp_RegisterDomain(array $params = [])
             }
         }
 
-        $profile = $params['epp_profile'] ?? 'generic';
+        $profile = $params['registry_profile'] ?? 'generic';
         if ($profile !== 'EU') {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
                 if (empty($params[$nsKey])) {
@@ -633,7 +633,7 @@ function epp_SaveNameservers(array $params = [])
             $add[$k] = (string)$v;
         }
 
-        $profile = $params['epp_profile'] ?? 'generic';
+        $profile = $params['registry_profile'] ?? 'generic';
         if ($profile !== 'EU') {
             if (!empty($add)) {
                 foreach ($add as $k => $nsName) {
@@ -1228,7 +1228,7 @@ function epp_GetEPPCode(array $params = [])
 
 function epp_RegisterNameserver(array $params = [])
 {
-    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+    if (($params['registry_profile'] ?? 'generic') === 'EU') {
         return [];
     }
 
@@ -1275,7 +1275,7 @@ function epp_RegisterNameserver(array $params = [])
 
 function epp_ModifyNameserver(array $params = [])
 {
-    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+    if (($params['registry_profile'] ?? 'generic') === 'EU') {
         return [];
     }
 
@@ -1303,7 +1303,7 @@ function epp_ModifyNameserver(array $params = [])
 
 function epp_DeleteNameserver(array $params = [])
 {
-    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+    if (($params['registry_profile'] ?? 'generic') === 'EU') {
         return [];
     }
 
@@ -1989,7 +1989,7 @@ function epp_random_auth_pw(int $len = 16): string {
 
 function epp_client(array $params)
 {
-    $profile = $params['epp_profile'] ?? 'generic';
+    $profile = $params['registry_profile'] ?? 'generic';
 
     $epp = EppRegistryFactory::create($profile);
     $epp->disableLogging();
