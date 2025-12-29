@@ -127,6 +127,31 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Prefix used when generating registry object IDs (contacts/hosts). Use the value required by the registry, if any.',
         ],
 
+        'epp_profile' => [
+            'FriendlyName' => 'EPP Profile',
+            'Type'    => 'dropdown',
+            'Options'      => 'generic,UA,VRSN',
+            'Default'     => 'generic',
+            'Description' => 'Select the EPP profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
+        ],
+
+        'set_authinfo_on_info' => [
+            'FriendlyName' => 'Set AuthInfo on Request',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  => 'Enable if the registry does not return the transfer code on domain info and requires setting it manually first.',
+        ],
+
+        'login_extensions' => [
+            'FriendlyName' => 'EPP Login Extensions',
+            'Type'        => 'textarea',
+            'Rows'        => 5,
+            'Description' =>
+                'Comma-separated EPP login extension URIs.<br>' .
+                'Leave empty to use defaults.<br>' .
+                '<code>urn:ietf:params:xml:ns:secDNS-1.1, urn:ietf:params:xml:ns:rgp-1.0</code>',
+        ],
+
         'gtld' => [
             'FriendlyName' => 'gTLD Registry',
             'Type'         => 'yesno',
@@ -139,31 +164,6 @@ function epp_getConfigArray(array $params = [])
             'Type'         => 'yesno',
             'Default'      => '',
             'Description'  => 'Use the ICANN Minimum Data Set.',
-        ],
-
-        'set_authinfo_on_info' => [
-            'FriendlyName' => 'Set AuthInfo on Request',
-            'Type'         => 'yesno',
-            'Default'      => '',
-            'Description'  => 'Enable if the registry does not return the transfer code on domain info and requires setting it manually first.',
-        ],
-        
-        'epp_profile' => [
-            'FriendlyName' => 'EPP Profile',
-            'Type'    => 'dropdown',
-            'Options'      => 'generic,UA',
-            'Default'     => 'generic',
-            'Description' => 'Select the EPP profile matching the registry implementation.',
-        ],
-
-        'login_extensions' => [
-            'FriendlyName' => 'EPP Login Extensions',
-            'Type'        => 'textarea',
-            'Rows'        => 5,
-            'Description' =>
-                'Comma-separated EPP login extension URIs.<br>' .
-                'Leave empty to use defaults.<br>' .
-                '<code>urn:ietf:params:xml:ns:secDNS-1.1, urn:ietf:params:xml:ns:rgp-1.0</code>',
         ],
 
     ];
@@ -1971,14 +1971,16 @@ function epp_client(array $params)
         'passphrase'       => $params['passphrase'] ?? '',
         'allow_self_signed'=> true,
     ];
-    $raw = $params['login_extensions'] ?? '';
-    $info['loginExtensions'] = trim($raw) !== ''
-        ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $raw))))
-        : [
-            'urn:ietf:params:xml:ns:secDNS-1.1',
-            'urn:ietf:params:xml:ns:rgp-1.0',
-        ];
-    $epp->setLoginExtensions($info['loginExtensions']);
+    if ($profile === 'generic') {
+        $raw = $params['login_extensions'] ?? '';
+        $info['loginExtensions'] = trim($raw) !== ''
+            ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $raw))))
+            : [
+                'urn:ietf:params:xml:ns:secDNS-1.1',
+                'urn:ietf:params:xml:ns:rgp-1.0',
+            ];
+        $epp->setLoginExtensions($info['loginExtensions']);
+    }
 
     if (empty($info['host']) || empty($info['port'])) {
         throw new \RuntimeException('EPP host/port not configured');
