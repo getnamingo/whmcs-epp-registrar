@@ -17,6 +17,8 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | CentralNic | all | |
 | CoCCA | all | |
 | CORE/Knipp | all | |
+| Domicilium | .im | |
+| DRS.UA | all | | ✅ | |
 | EURid | .eu | EU |
 | GoDaddy Registry | all | |
 | Google Nomulus | all | |
@@ -24,10 +26,13 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | Identity Digital | all | |
 | IT.COM | all | |
 | Namingo | all | |
+| NIC Chile | .cl | |
+| NIC Mexico | .mx | MX |
 | Regtons | all | |
 | RoTLD | .ro | |
 | RyCE | all | |
 | SIDN | all | |
+| SWITCH | .ch, .li | |
 | Tucows Registry | all | |
 | Verisign | all | VRSN |
 | ZADNA | .za | |
