@@ -130,7 +130,7 @@ function epp_getConfigArray(array $params = [])
         'epp_profile' => [
             'FriendlyName' => 'EPP Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,UA,VRSN',
+            'Options'      => 'generic,EU,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the EPP profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -164,6 +164,13 @@ function epp_getConfigArray(array $params = [])
             'Type'         => 'yesno',
             'Default'      => '',
             'Description'  => 'Use the ICANN Minimum Data Set.',
+        ],
+
+        'eurid_billing_contact' => [
+            'FriendlyName' => 'EURid Billing Contact ID',
+            'Type'         => 'text',
+            'Default'      => '',
+            'Description'  => 'Optional billing contact handle for EURid. Used only when EPP profile is EU.',
         ],
 
     ];
@@ -203,8 +210,19 @@ function epp_RegisterDomain(array $params = [])
 
         if (empty($params['gtld']) && empty($params['min_data_set'])) {
             $contacts = [];
+            
+            $contactTypeMap = [
+                'EU'      => ['registrant', 'tech'],                 // EURid
+                'VRSN'   => ['registrant', 'admin', 'tech', 'billing'],
+                'generic'=> ['registrant', 'admin', 'tech', 'billing'],
+            ];
 
-            foreach (['registrant', 'admin', 'tech', 'billing'] as $i => $contactType) {
+            $profile = $params['epp_profile'] ?? 'generic';
+
+            $contactTypes = $contactTypeMap[$profile]
+                ?? $contactTypeMap['generic'];
+
+            foreach ($contactTypes as $i => $contactType) {
 
                 $id = strtoupper(epp_random_contact_id());
                 $authInfoPw = epp_random_auth_pw();
@@ -225,6 +243,8 @@ function epp_RegisterDomain(array $params = [])
                     'fullphonenumber' => $params['fullphonenumber'] ?? '',
                     'email'           => $params['email'] ?? '',
                     'authInfoPw'      => $authInfoPw,
+                    // EU-only extras
+                    'euType'    => ($profile === 'EU') ? $contactType : null,
                 ]);
 
                 if (!empty($contactCreate['error'])) {
@@ -236,41 +256,44 @@ function epp_RegisterDomain(array $params = [])
             }
         }
 
-        foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
-            if (empty($params[$nsKey])) {
-                continue;
-            }
+        $profile = $params['epp_profile'] ?? 'generic';
+        if ($profile !== 'EU') {
+            foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
+                if (empty($params[$nsKey])) {
+                    continue;
+                }
 
-            $hostname = (string)$params[$nsKey];
+                $hostname = (string)$params[$nsKey];
 
-            $hostCheck = $epp->hostCheck([
-                'hostname' => $hostname,
-            ]);
+                $hostCheck = $epp->hostCheck([
+                    'hostname' => $hostname,
+                ]);
 
-            if (!empty($hostCheck['error'])) {
-                throw new \Exception((string)$hostCheck['error']);
-            }
+                if (!empty($hostCheck['error'])) {
+                    throw new \Exception((string)$hostCheck['error']);
+                }
 
-            $items = $hostCheck['hosts'] ?? [];
-            $item  = $items[0] ?? null;
+                $items = $hostCheck['hosts'] ?? [];
+                $item  = $items[0] ?? null;
 
-            if (!$item) {
-                continue;
-            }
+                if (!$item) {
+                    continue;
+                }
 
-            $avail = filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-            $avail = $avail ?? ((int)($item['avail'] ?? 0) === 1);
+                $avail = filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+                $avail = $avail ?? ((int)($item['avail'] ?? 0) === 1);
 
-            if (!$avail) {
-                continue;
-            }
+                if (!$avail) {
+                    continue;
+                }
 
-            $hostCreate = $epp->hostCreate([
-                'hostname' => $hostname,
-            ]);
+                $hostCreate = $epp->hostCreate([
+                    'hostname' => $hostname,
+                ]);
 
-            if (!empty($hostCreate['error'])) {
-                throw new \Exception((string)$hostCreate['error']);
+                if (!empty($hostCreate['error'])) {
+                    throw new \Exception((string)$hostCreate['error']);
+                }
             }
         }
 
@@ -293,12 +316,22 @@ function epp_RegisterDomain(array $params = [])
         ];
 
         if (empty($params['gtld']) && empty($params['min_data_set'])) {
-            $payload['registrant'] = $contacts[1] ?? null;
-            $payload['contacts'] = [
-                'admin'   => $contacts[2] ?? null,
-                'tech'    => $contacts[3] ?? null,
-                'billing' => $contacts[4] ?? null,
-            ];
+            if ($profile === 'EU') {
+                $payload['registrant'] = $contacts[1] ?? null;
+
+                $payload['contacts'] = [
+                    'tech'    => $contacts[2] ?? null,
+                    'billing' => trim($params['eurid_billing_contact'] ?? '') ?: null,
+                ];
+            } else {
+                $payload['registrant'] = $contacts[1] ?? null;
+
+                $payload['contacts'] = [
+                    'admin'   => $contacts[2] ?? null,
+                    'tech'    => $contacts[3] ?? null,
+                    'billing' => $contacts[4] ?? null,
+                ];
+            }
         }
 
         $domainCreate = $epp->domainCreate($payload);
@@ -600,42 +633,45 @@ function epp_SaveNameservers(array $params = [])
             $add[$k] = (string)$v;
         }
 
-        if (!empty($add)) {
-            foreach ($add as $k => $nsName) {
-                $nsName = trim((string)$nsName);
-                if ($nsName === '') {
-                    continue;
-                }
+        $profile = $params['epp_profile'] ?? 'generic';
+        if ($profile !== 'EU') {
+            if (!empty($add)) {
+                foreach ($add as $k => $nsName) {
+                    $nsName = trim((string)$nsName);
+                    if ($nsName === '') {
+                        continue;
+                    }
 
-                $hostCheck = $epp->hostCheck([
-                    'hostname' => $nsName,
-                ]);
+                    $hostCheck = $epp->hostCheck([
+                        'hostname' => $nsName,
+                    ]);
 
-                if (!empty($hostCheck['error'])) {
-                    throw new \Exception((string)$hostCheck['error']);
-                }
+                    if (!empty($hostCheck['error'])) {
+                        throw new \Exception((string)$hostCheck['error']);
+                    }
 
-                $items = $hostCheck['hosts'] ?? [];
-                $item  = $items[1] ?? null;
+                    $items = $hostCheck['hosts'] ?? [];
+                    $item  = $items[1] ?? null;
 
-                if (!$item) {
-                    continue;
-                }
+                    if (!$item) {
+                        continue;
+                    }
 
-                $avail = filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-                $avail = $avail ?? ((int)($item['avail'] ?? 0) === 1);
+                    $avail = filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+                    $avail = $avail ?? ((int)($item['avail'] ?? 0) === 1);
 
-                if (!$avail) {
-                    continue;
-                }
+                    if (!$avail) {
+                        continue;
+                    }
 
-                // host:create
-                $hostCreate = $epp->hostCreate([
-                    'hostname' => $nsName,
-                ]);
+                    // host:create
+                    $hostCreate = $epp->hostCreate([
+                        'hostname' => $nsName,
+                    ]);
 
-                if (!empty($hostCreate['error'])) {
-                    throw new \Exception((string)$hostCreate['error']);
+                    if (!empty($hostCreate['error'])) {
+                        throw new \Exception((string)$hostCreate['error']);
+                    }
                 }
             }
         }
@@ -647,13 +683,40 @@ function epp_SaveNameservers(array $params = [])
             }
         }
 
-        $payload = ['domainname' => $domain];
+        if ($profile === 'EU') {
+            $payload = [
+                'domainname' => $domain,
+                'nss'        => [],
+            ];
 
-        foreach (array_values($final) as $idx => $host) {
-            $payload['ns' . ($idx + 1)] = $host;
+            foreach (array_values($final) as $host) {
+                $ns = ['hostName' => $host];
+
+                if (preg_match('/\.eu$/i', $host)) {
+                    $a = @dns_get_record($host, DNS_A);
+                    if (!empty($a[0]['ip'])) {
+                        $ns['ipv4'] = $a[0]['ip'];
+                    }
+
+                    $aaaa = @dns_get_record($host, DNS_AAAA);
+                    if (!empty($aaaa[0]['ipv6'])) {
+                        $ns['ipv6'] = $aaaa[0]['ipv6'];
+                    }
+                }
+
+                $payload['nss'][] = $ns;
+            }
+
+            $domainUpdateNS = $epp->domainUpdateNS($payload);
+        } else {
+            $payload = ['domainname' => $domain];
+
+            foreach (array_values($final) as $idx => $host) {
+                $payload['ns' . ($idx + 1)] = $host;
+            }
+
+            $domainUpdateNS = $epp->domainUpdateNS($payload);
         }
-
-        $domainUpdateNS = $epp->domainUpdateNS($payload);
 
         if (!empty($domainUpdateNS['error'])) {
             throw new \Exception((string)$domainUpdateNS['error']);
@@ -1165,6 +1228,10 @@ function epp_GetEPPCode(array $params = [])
 
 function epp_RegisterNameserver(array $params = [])
 {
+    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+        return [];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -1208,6 +1275,10 @@ function epp_RegisterNameserver(array $params = [])
 
 function epp_ModifyNameserver(array $params = [])
 {
+    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+        return [];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -1232,6 +1303,10 @@ function epp_ModifyNameserver(array $params = [])
 
 function epp_DeleteNameserver(array $params = [])
 {
+    if (($params['epp_profile'] ?? 'generic') === 'EU') {
+        return [];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
