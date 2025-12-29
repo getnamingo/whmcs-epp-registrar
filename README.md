@@ -17,6 +17,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | CentralNic | all | |
 | CoCCA | all | |
 | CORE/Knipp | all | |
+| EURid | .eu | EU |
 | GoDaddy Registry | all | |
 | Google Nomulus | all | |
 | Hostmaster | .ua | UA |
