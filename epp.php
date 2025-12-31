@@ -130,7 +130,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,EU,MX,PL,UA,VRSN',
+            'Options'      => 'generic,EU,FR,MX,PL,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -392,13 +392,44 @@ function epp_TransferDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        
+        $profile = $params['registry_profile'] ?? 'generic';
+        if ($profile === 'FR') {
+            $domainInfo = $epp->domainInfo([
+                'domainname' => $domain,
+            ]);
 
-        $domainTransfer = $epp->domainTransfer([
-            'domainname' => $domain,
-            'years'      => $params['regperiod'],
-            'authInfoPw' => $params['eppcode'],
-            'op'         => 'request',
-        ]);
+            if (isset($domainInfo['error'])) {
+                throw new \Exception($domainInfo['error']);
+            }
+            
+            $adminId = null;
+            $techId  = null;
+
+            foreach (($domainInfo['contact'] ?? []) as $c) {
+                if (($c['type'] ?? '') === 'admin') {
+                    $adminId = $c['id'] ?? null;
+                } elseif (($c['type'] ?? '') === 'tech') {
+                    $techId = $c['id'] ?? null;
+                }
+            }
+
+            $domainTransfer = $epp->domainTransfer([
+                'domainname' => $domain,
+                'years'      => $params['regperiod'],
+                'authInfoPw' => $params['eppcode'],
+                'op'         => 'request',
+                'admin'      => $adminId,
+                'tech'       => $techId,
+            ]);
+        } else {
+            $domainTransfer = $epp->domainTransfer([
+                'domainname' => $domain,
+                'years'      => $params['regperiod'],
+                'authInfoPw' => $params['eppcode'],
+                'op'         => 'request',
+            ]);
+        }
 
         if (isset($domainTransfer['error'])) {
             throw new \Exception($domainTransfer['error']);

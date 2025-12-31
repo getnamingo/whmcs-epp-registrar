@@ -13,12 +13,13 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | Registry | TLDs | Profile |
 |----------|----------|----------|
 | Generic RFC EPP | any | |
+| AFNIC | .fr/others | FR |
 | Caucasus Online | .ge | |
 | CentralNic | all | |
 | CoCCA | all | |
 | CORE/Knipp | all | |
 | Domicilium | .im | |
-| DRS.UA | all | | ✅ | |
+| DRS.UA | all | | |
 | EURid | .eu | EU |
 | GoDaddy Registry | all | |
 | Google Nomulus | all | |
