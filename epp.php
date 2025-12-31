@@ -130,7 +130,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,EU,FR,MX,PL,SWITCH,UA,VRSN',
+            'Options'      => 'generic,EU,FR,MX,PL,SE,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -246,6 +246,9 @@ function epp_RegisterDomain(array $params = [])
                     'authInfoPw'      => $authInfoPw,
                     // EU-only extras
                     'euType'    => ($profile === 'EU') ? $contactType : null,
+                    // SE-only extras
+                    'orgno'  => ($profile === 'SE') ? ($params['additionalfields']['NIN'] ?? null) : null,
+                    'vatno'  => ($profile === 'SE') ? ($params['additionalfields']['VAT'] ?? null) : null,
                 ]);
 
                 if (!empty($contactCreate['error'])) {

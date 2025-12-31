@@ -25,6 +25,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | Google Nomulus | all | | |
 | Hostmaster | .ua | UA | |
 | Identity Digital | all | | |
+| IIS | .se, .nu | SE | |
 | IT.COM | all | | |
 | Namingo | all | | |
 | NASK | .pl | PL | |
