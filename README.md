@@ -14,6 +14,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 |----------|----------|----------|----------|
 | Generic RFC EPP | any | | |
 | AFNIC | .fr/others | FR | |
+| CARNET | .hr | HR | |
 | Caucasus Online | .ge | | |
 | CentralNic | all | | Set AuthInfo on Request |
 | CoCCA | all | | Set AuthInfo on Request |
