@@ -32,6 +32,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | NASK | .pl | PL | |
 | NIC Chile | .cl | | |
 | NIC Mexico | .mx | MX | |
+| .PT | .pt | PT | |
 | Regtons | all | | |
 | RoTLD | .ro | | |
 | RyCE | all | | |

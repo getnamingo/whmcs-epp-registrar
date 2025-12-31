@@ -63,3 +63,15 @@ $additionaldomainfields[".hr"][] = [
     "Default"  => "personal",
     "Required" => true,
 ];
+
+// -------------------------------------------------
+// .PT — Poland
+// -------------------------------------------------
+
+$additionaldomainfields[".pt"][] = [
+    "Name"     => "VAT",
+    "LangVar"  => "vat_number",
+    "Type"     => "text",
+    "Size"     => "30",
+    "Required" => false,
+];
