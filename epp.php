@@ -130,7 +130,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,EU,FR,MX,PL,UA,VRSN',
+            'Options'      => 'generic,EU,FR,MX,PL,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -213,6 +213,7 @@ function epp_RegisterDomain(array $params = [])
             
             $contactTypeMap = [
                 'EU'      => ['registrant', 'tech'],                 // EURid
+                'SWITCH'=> ['registrant', 'tech'],
                 'VRSN'   => ['registrant', 'admin', 'tech', 'billing'],
                 'generic'=> ['registrant', 'admin', 'tech', 'billing'],
             ];

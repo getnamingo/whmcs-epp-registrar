@@ -10,35 +10,35 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 
 ## Registry Support
 
-| Registry | TLDs | Profile |
-|----------|----------|----------|
-| Generic RFC EPP | any | |
-| AFNIC | .fr/others | FR |
-| Caucasus Online | .ge | |
-| CentralNic | all | |
-| CoCCA | all | |
-| CORE/Knipp | all | |
-| Domicilium | .im | |
-| DRS.UA | all | | |
-| EURid | .eu | EU |
-| GoDaddy Registry | all | |
-| Google Nomulus | all | |
-| Hostmaster | .ua | UA |
-| Identity Digital | all | |
-| IT.COM | all | |
-| Namingo | all | |
-| NASK | .pl | PL |
-| NIC Chile | .cl | |
-| NIC Mexico | .mx | MX |
-| Regtons | all | |
-| RoTLD | .ro | |
-| RyCE | all | |
-| SIDN | all | |
-| SWITCH | .ch, .li | |
-| Tucows Registry | all | |
-| Verisign | all | VRSN |
-| ZADNA | .za | |
-| ZDNS | all | |
+| Registry | TLDs | Profile | Needs |
+|----------|----------|----------|----------|
+| Generic RFC EPP | any | | |
+| AFNIC | .fr/others | FR | |
+| Caucasus Online | .ge | | |
+| CentralNic | all | | Set AuthInfo on Request |
+| CoCCA | all | | Set AuthInfo on Request |
+| CORE/Knipp | all | | |
+| Domicilium | .im | | |
+| DRS.UA | all | | | |
+| EURid | .eu | EU | |
+| GoDaddy Registry | all | | |
+| Google Nomulus | all | | |
+| Hostmaster | .ua | UA | |
+| Identity Digital | all | | |
+| IT.COM | all | | |
+| Namingo | all | | |
+| NASK | .pl | PL | |
+| NIC Chile | .cl | | |
+| NIC Mexico | .mx | MX | |
+| Regtons | all | | |
+| RoTLD | .ro | | |
+| RyCE | all | | |
+| SIDN | all | | |
+| SWITCH | .ch, .li | SWITCH | Set AuthInfo on Request |
+| Tucows Registry | all | | |
+| Verisign | all | VRSN | |
+| ZADNA | .za | | |
+| ZDNS | all | | |
 
 ## Installation
 
