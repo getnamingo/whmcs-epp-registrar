@@ -15,7 +15,6 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | Generic RFC EPP | any | | |
 | AFNIC | .fr/others | FR | |
 | CARNET | .hr | HR | |
-| Caucasus Online | .ge | | |
 | CentralNic | all | | Set AuthInfo on Request |
 | CoCCA | all | | Set AuthInfo on Request |
 | CORE/Knipp | all | | |
@@ -43,6 +42,26 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | Verisign | all | VRSN | |
 | ZADNA | .za | | |
 | ZDNS | all | | |
+
+### In Progress
+
+| Registry | TLDs | Profile | Status |
+|----------|----------|----------|----------|
+| Caucasus Online | .ge | | |
+| DENIC | .de | DE | |
+| DOMREG | .lt | LT | |
+| FORTH-ICS | .gr, .ελ | GR | |
+| FRED | .cz/any | FRED | |
+| NORID | .no | NO | |
+
+### Paid Registry Support
+
+| Registry | TLDs | Profile | Status |
+|----------|----------|----------|----------|
+| HKIRC | .hk | HK | |
+| Internet.ee | .ee | EE | |
+| Registro.it | .it | IT | |
+| Traficom | .fr | FI | |
 
 ## Installation
 
