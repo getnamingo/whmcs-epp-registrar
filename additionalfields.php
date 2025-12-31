@@ -75,3 +75,23 @@ $additionaldomainfields[".pt"][] = [
     "Size"     => "30",
     "Required" => false,
 ];
+
+// -------------------------------------------------
+// .LV — Latvia
+// -------------------------------------------------
+
+$additionaldomainfields[".lv"][] = [
+    "Name"     => "NIN",
+    "LangVar"  => "nin",
+    "Type"     => "text",
+    "Size"     => "30",
+    "Required" => true,
+];
+
+$additionaldomainfields[".lv"][] = [
+    "Name"     => "VAT",
+    "LangVar"  => "vat_number",
+    "Type"     => "text",
+    "Size"     => "30",
+    "Required" => false,
+];

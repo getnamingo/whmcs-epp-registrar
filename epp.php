@@ -130,7 +130,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,EU,FR,HR,MX,PL,PT,SE,SWITCH,UA,VRSN',
+            'Options'      => 'generic,EU,FR,HR,LV,MX,PL,PT,SE,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -249,6 +249,9 @@ function epp_RegisterDomain(array $params = [])
                     // SE-only extras
                     'orgno'  => ($profile === 'SE') ? ($params['additionalfields']['NIN'] ?? null) : null,
                     'vatno'  => ($profile === 'SE') ? ($params['additionalfields']['VAT'] ?? null) : null,
+                    // LV-only extras
+                    'regNr'  => ($profile === 'LV') ? ($params['additionalfields']['NIN'] ?? null) : null,
+                    'vatNr'  => ($profile === 'LV') ? ($params['additionalfields']['VAT'] ?? null) : null,
                     // HR-only extras
                     'nin' => ($profile === 'HR') ? ($params['additionalfields']['NIN'] ?? null) : null,
                     'nin_type' => ($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null,
@@ -266,7 +269,7 @@ function epp_RegisterDomain(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if ($profile !== 'EU') {
+        if (!in_array($profile, ['EU', 'HR', 'LV'], true)) {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
                 if (empty($params[$nsKey])) {
                     continue;
@@ -373,6 +376,11 @@ function epp_RegisterDomain(array $params = [])
 
 function epp_RenewDomain(array $params = [])
 {
+    $profile = $params['registry_profile'] ?? 'generic';
+    if ($profile === 'LV') {
+        return [];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -674,7 +682,7 @@ function epp_SaveNameservers(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if ($profile !== 'EU') {
+        if (!in_array($profile, ['EU', 'HR', 'LV'], true)) {
             if (!empty($add)) {
                 foreach ($add as $k => $nsName) {
                     $nsName = trim((string)$nsName);
@@ -723,7 +731,7 @@ function epp_SaveNameservers(array $params = [])
             }
         }
 
-        if ($profile === 'EU') {
+        if (in_array($profile, ['EU', 'HR', 'LV'], true)) {
             $payload = [
                 'domainname' => $domain,
                 'nss'        => [],
