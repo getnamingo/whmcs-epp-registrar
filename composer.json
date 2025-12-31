@@ -5,6 +5,6 @@
   "license": "MIT",
   "require": {
     "php": ">=8.3",
-    "pinga/tembo": "^1.1.10"
+    "pinga/tembo": "^1.1.11"
   }
 }

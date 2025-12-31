@@ -83,7 +83,10 @@ chmod -R 755 [WHMCS_path]/modules/registrars/[MODULE]
 
 6. Add a new TLD using Configuration -> System Settings -> Domain Pricing
 
-7. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
+7. If your module includes **additional domain fields**, copy the contents of  
+   `additionalfields.php` into `[WHMCS_path]/resources/domains/additionalfields.php`. If the file already exists, **merge the contents** (do not overwrite it).
+
+8. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
 
 ```
 [
