@@ -269,7 +269,7 @@ function epp_RegisterDomain(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if (!in_array($profile, ['EU', 'HR', 'LV'], true)) {
+        if (!in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
                 if (empty($params[$nsKey])) {
                     continue;
@@ -310,11 +310,36 @@ function epp_RegisterDomain(array $params = [])
         }
 
         $period     = (int)($params['regperiod'] ?? 1);
-
+        
         $nss = [];
-        foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
-            if (!empty($params[$k])) {
-                $nss[] = (string)$params[$k];
+        if (in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
+            foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
+                $host = (string)($params[$k] ?? '');
+                if ($host === '') {
+                    continue;
+                }
+
+                $ns = ['hostName' => $host];
+
+                if (preg_match('/\.(eu|hr|ge|lv)$/i', $host)) {
+                    $a = @dns_get_record($host, DNS_A);
+                    if (!empty($a[0]['ip'])) {
+                        $ns['ipv4'] = $a[0]['ip'];
+                    }
+
+                    $aaaa = @dns_get_record($host, DNS_AAAA);
+                    if (!empty($aaaa[0]['ipv6'])) {
+                        $ns['ipv6'] = $aaaa[0]['ipv6'];
+                    }
+                }
+
+                $nss[] = $ns;
+            }
+        } else {
+            foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
+                if (!empty($params[$k])) {
+                    $nss[] = (string)$params[$k];
+                }
             }
         }
 
@@ -682,7 +707,7 @@ function epp_SaveNameservers(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if (!in_array($profile, ['EU', 'HR', 'LV'], true)) {
+        if (!in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             if (!empty($add)) {
                 foreach ($add as $k => $nsName) {
                     $nsName = trim((string)$nsName);
@@ -731,7 +756,7 @@ function epp_SaveNameservers(array $params = [])
             }
         }
 
-        if (in_array($profile, ['EU', 'HR', 'LV'], true)) {
+        if (in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             $payload = [
                 'domainname' => $domain,
                 'nss'        => [],
@@ -740,7 +765,7 @@ function epp_SaveNameservers(array $params = [])
             foreach (array_values($final) as $host) {
                 $ns = ['hostName' => $host];
 
-                if (preg_match('/\.eu$/i', $host)) {
+                if (preg_match('/\.(eu|hr|ge|lv)$/i', $host)) {
                     $a = @dns_get_record($host, DNS_A);
                     if (!empty($a[0]['ip'])) {
                         $ns['ipv4'] = $a[0]['ip'];
@@ -1276,7 +1301,7 @@ function epp_GetEPPCode(array $params = [])
 
 function epp_RegisterNameserver(array $params = [])
 {
-    if (($params['registry_profile'] ?? 'generic') === 'EU') {
+    if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
 
@@ -1323,7 +1348,7 @@ function epp_RegisterNameserver(array $params = [])
 
 function epp_ModifyNameserver(array $params = [])
 {
-    if (($params['registry_profile'] ?? 'generic') === 'EU') {
+    if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
 
@@ -1351,7 +1376,7 @@ function epp_ModifyNameserver(array $params = [])
 
 function epp_DeleteNameserver(array $params = [])
 {
-    if (($params['registry_profile'] ?? 'generic') === 'EU') {
+    if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
 
