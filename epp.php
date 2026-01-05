@@ -173,6 +173,13 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Optional billing contact handle for EURid. Used only when EPP profile is EU.',
         ],
 
+        'tmch_claims_period_active' => [
+            'FriendlyName' => 'TMCH Claims Period Active',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  => 'Indicates that this TLD is currently in the TMCH Claims Period. When enabled, TMCH Claims Notice checks will be performed.',
+        ],
+
     ];
 }
 
