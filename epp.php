@@ -827,27 +827,70 @@ function epp_CheckAvailability(array $params = [])
 
             $fqdn = $label . '.' . $tld;
 
-            $domainCheck = $epp->domainCheck([
-                'domains' => [$fqdn],
-            ]);
+            $claimsPeriodActive = !empty($params['tmch_claims_period_active']);
+            if ($claimsPeriodActive) {
+                $domainCheck = $epp->domainCheckClaims([
+                    'domainname' => $fqdn,
+                ]);
 
-            if (!empty($domainCheck['error'])) {
-                throw new \Exception((string)$domainCheck['error']);
+                if (!empty($domainCheck['error'])) {
+                    throw new \Exception((string)$domainCheck['error']);
+                }
+
+                $status   = isset($domainCheck['status'][0]) ? (string)$domainCheck['status'][0] : null;
+                $claimKey = isset($domainCheck['claimKey'][0]) ? (string)$domainCheck['claimKey'][0] : null;
+                $hasClaims = !empty($claimKey);
+
+                if ($hasClaims) {
+                    $domainKey = strtolower($label . '.' . $tld);
+                    $_SESSION['namingo_tmch_claims'][$domainKey] = [
+                        'hasClaims' => true,
+                        'lookupKey' => $claimKey,
+                    ];
+
+                    $avail = ((int)$status === 1);
+                } else {
+                    $domainCheck = $epp->domainCheck([
+                        'domains' => [$fqdn],
+                    ]);
+                    
+                    if (!empty($domainCheck['error'])) {
+                        throw new \Exception((string)$domainCheck['error']);
+                    }
+
+                    $item = $domainCheck['domains'][1] ?? null;
+                    if (!$item) {
+                        throw new \Exception('Domain check failed: empty response');
+                    }
+
+                    $avail = (int)filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+                    $avail = $avail ?: ((int)($item['avail'] ?? 0) === 1);
+
+                    $reason = (string)($item['reason'] ?? '');
+                }
+            } else {
+                $domainCheck = $epp->domainCheck([
+                    'domains' => [$fqdn],
+                ]);
+                
+                if (!empty($domainCheck['error'])) {
+                    throw new \Exception((string)$domainCheck['error']);
+                }
+
+                $item = $domainCheck['domains'][1] ?? null;
+                if (!$item) {
+                    throw new \Exception('Domain check failed: empty response');
+                }
+
+                $avail = (int)filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+                $avail = $avail ?: ((int)($item['avail'] ?? 0) === 1);
+
+                $reason = (string)($item['reason'] ?? '');
             }
-
-            $item = $domainCheck['domains'][1] ?? null;
-            if (!$item) {
-                throw new \Exception('Domain check failed: empty response');
-            }
-
-            $avail = (int)filter_var($item['avail'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-            $avail = $avail ?: ((int)($item['avail'] ?? 0) === 1);
-
-            $reason = (string)($item['reason'] ?? '');
 
             $searchResult = new SearchResult($label, $tld);
 
-            if ($avail === 1) {
+            if ((int)$avail === 1) {
                 $searchResult->setStatus(SearchResult::STATUS_NOT_REGISTERED);
             } else {
                 // TODO: Premium domains
@@ -864,6 +907,7 @@ function epp_CheckAvailability(array $params = [])
         epp_client_logout($epp);
     }
 }
+
 function epp_GetRegistrarLock(array $params = [])
 {
     $return = 'unlocked';
