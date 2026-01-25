@@ -196,7 +196,20 @@ function epp_RegisterDomain(array $params = [])
             throw new \Exception((string)$domainCheck['error']);
         }
 
-        $item = ($domainCheck['domains'][1] ?? null);
+        $domains = $domainCheck['domains'] ?? null;
+        $item = null;
+
+        if (is_array($domains)) {
+            if (!empty($fqdn) && isset($domains[$fqdn]) && is_array($domains[$fqdn])) {
+                $item = $domains[$fqdn];
+
+            } else {
+                $first = reset($domains);
+                if (is_array($first)) {
+                    $item = $first;
+                }
+            }
+        }
 
         if (!$item || empty($item['name'])) {
             throw new \Exception('Domain check failed: empty response');
@@ -863,7 +876,20 @@ function epp_CheckAvailability(array $params = [])
                         throw new \Exception((string)$domainCheck['error']);
                     }
 
-                    $item = $domainCheck['domains'][1] ?? null;
+                    $domains = $domainCheck['domains'] ?? null;
+                    $item = null;
+
+                    if (is_array($domains)) {
+                        if (isset($domains[$fqdn]) && is_array($domains[$fqdn])) {
+                            $item = $domains[$fqdn];
+                        } else {
+                            $first = reset($domains);
+                            if (is_array($first)) {
+                                $item = $first;
+                            }
+                        }
+                    }
+
                     if (!$item) {
                         throw new \Exception('Domain check failed: empty response');
                     }
@@ -877,12 +903,25 @@ function epp_CheckAvailability(array $params = [])
                 $domainCheck = $epp->domainCheck([
                     'domains' => [$fqdn],
                 ]);
-                
+
                 if (!empty($domainCheck['error'])) {
                     throw new \Exception((string)$domainCheck['error']);
                 }
 
-                $item = $domainCheck['domains'][1] ?? null;
+                $domains = $domainCheck['domains'] ?? null;
+                $item = null;
+
+                if (is_array($domains)) {
+                    if (isset($domains[$fqdn]) && is_array($domains[$fqdn])) {
+                        $item = $domains[$fqdn];
+                    } else {
+                        $first = reset($domains);
+                        if (is_array($first)) {
+                            $item = $first;
+                        }
+                    }
+                }
+
                 if (!$item) {
                     throw new \Exception('Domain check failed: empty response');
                 }
