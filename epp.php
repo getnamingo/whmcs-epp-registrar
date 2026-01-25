@@ -389,10 +389,39 @@ function epp_RegisterDomain(array $params = [])
             }
         }
 
-        $domainCreate = $epp->domainCreate($payload);
+        $claimsPeriodActive = !empty($params['tmch_claims_period_active']);
+        if ($claimsPeriodActive) {
+            $domainKey = strtolower($params['sld'] . '.' . ltrim($params['tld'], '.'));
 
-        if (!empty($domainCreate['error'])) {
-            throw new \Exception((string)$domainCreate['error']);
+            $tmch = $_SESSION['namingo_tmch_claims'][$domainKey] ?? null;
+
+            if (!empty($tmch) && !empty($tmch['noticeID']) && !empty($tmch['notAfter'])) {
+                $payload['noticeID'] = $tmch['noticeID'];
+                $payload['notAfter'] = $tmch['notAfter'];
+                $payload['acceptedDate'] = gmdate('Y-m-d\TH:i:s') . '.0Z';
+
+                unset($_SESSION['namingo_tmch_claims'][$domainKey]);
+
+                if (empty($_SESSION['namingo_tmch_claims'])) {
+                    unset($_SESSION['namingo_tmch_claims']);
+                }
+
+                $domainCreateClaims = $epp->domainCreateClaims($payload);
+
+                if (!empty($domainCreateClaims['error'])) {
+                    throw new \Exception((string)$domainCreateClaims['error']);
+                }
+            } else {
+                throw new \Exception(
+                    'TMCH Claims Notice is missing or expired for domain: ' . $domain
+                );
+            }
+        } else {
+            $domainCreate = $epp->domainCreate($payload);
+
+            if (!empty($domainCreate['error'])) {
+                throw new \Exception((string)$domainCreate['error']);
+            }
         }
 
         if (!empty($params['gtld'])) {
