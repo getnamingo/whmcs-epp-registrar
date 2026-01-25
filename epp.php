@@ -13,9 +13,7 @@ if (!defined("WHMCS")) {
     die("This file cannot be accessed directly");
 }
 
-if (file_exists(__DIR__ . '/vendor/autoload.php')) {
-    require_once __DIR__ . '/vendor/autoload.php';
-}
+require_once __DIR__ . '/lib/epp/autoload.php';
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
