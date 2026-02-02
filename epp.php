@@ -226,7 +226,7 @@ function epp_RegisterDomain(array $params = [])
             throw new \Exception($domain . ' ' . $reason);
         }
 
-        if (empty($params['gtld']) && empty($params['min_data_set'])) {
+        if (empty($params['min_data_set'])) {
             $contacts = [];
             
             $contactTypeMap = [
@@ -370,7 +370,7 @@ function epp_RegisterDomain(array $params = [])
             'authInfoPw' => $authInfoPw,
         ];
 
-        if (empty($params['gtld']) && empty($params['min_data_set'])) {
+        if (empty($params['min_data_set'])) {
             if ($profile === 'EU') {
                 $payload['registrant'] = $contacts[1] ?? null;
 
