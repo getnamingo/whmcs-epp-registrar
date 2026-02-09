@@ -2,452 +2,32 @@
 /**
  * Namingo EPP client library
  *
- * Written in 2023-2025 by Taras Kondratyuk (https://namingo.org)
+ * Written in 2023-2026 by Taras Kondratyuk (https://namingo.org)
  * Based on xpanel/epp-bundle written in 2019 by Lilian Rudenco (info@xpanel.com)
  *
  * @license MIT
  */
 
-namespace Pinga\Tembo;
+namespace Pinga\Tembo\Registries;
 
+use Pinga\Tembo\Epp;
+use Pinga\Tembo\EppRegistryInterface;
 use Pinga\Tembo\Exception\EppException;
 use Pinga\Tembo\Exception\EppNotConnectedException;
-use Pinga\Tembo\Internal\NullLogger;
 
-abstract class Epp implements EppRegistryInterface
+class IsEpp extends Epp
 {
-    protected $resource;
-    protected $isLoggedIn;
-    protected $prefix;
-    protected string $logPath = __DIR__ . '/../log';
-    protected $commonLogger;
-    protected $requestLogger;
-    protected $responseLogger;
-    protected bool $loggingEnabled = true;
-
-    /**
-     * Default login extensions.
-     * Can be overridden via setLoginExtensions()
-     */
-    protected $loginExtensions = [
-        'urn:ietf:params:xml:ns:secDNS-1.1',
-        'urn:ietf:params:xml:ns:rgp-1.0',
-    ];
-
-    public function __construct()
-    {
-        if (!extension_loaded('SimpleXML')) {
-            throw new \Exception('PHP extension SimpleXML is not loaded.');
-        }
-
-        // Create the loggers
-        $this->responseLogger = new NullLogger();
-        $this->requestLogger  = new NullLogger();
-        $this->commonLogger   = new NullLogger();
-
-        $this->loggingEnabled = false;
-    }
-
-    /**
-     * connect
-     */
-    public function connect($params = array())
-    {
-        $host = (string)$params['host'];
-        $port = (int)$params['port'];
-        $timeout = (int)$params['timeout'];
-        $tls = (string)$params['tls'];
-        $bind = (string)$params['bind'];
-        $bindip = (string)$params['bindip'];
-        if ($tls !== '1.3' && $tls !== '1.2' && $tls !== '1.1') {
-            throw new EppException('Invalid TLS version specified.');
-        }
-        $opts = array(
-            'ssl' => array(
-            'verify_peer' => (bool)$params['verify_peer'],
-            'verify_peer_name' => (bool)$params['verify_peer_name'],
-            'cafile' => (string)$params['cafile'],
-            'local_cert' => (string)$params['local_cert'],
-            'local_pk' => (string)$params['local_pk'],
-            'passphrase' => (string)$params['passphrase'],
-            'allow_self_signed' => (bool)$params['allow_self_signed'],
-            'min_tls_version' => $tls
-            )
-        );
-        if ($bind) {
-            $opts['socket'] = array('bindto' => $bindip);
-        }
-        $context = stream_context_create($opts);
-        $this->resource = stream_socket_client("tls://{$host}:{$port}", $errno, $errmsg, $timeout, STREAM_CLIENT_CONNECT, $context);
-        if (!$this->resource) {
-            throw new EppException("Cannot connect to server '{$host}': {$errmsg}");
-        }
-
-        return $this->readResponse();
-    }
-
-    /**
-     * readResponse
-     */
-    public function readResponse()
-    {
-        $hdr = stream_get_contents($this->resource, 4);
-        if ($hdr === false) {
-            throw new EppException('Connection appears to have closed.');
-        }
-        if (strlen($hdr) < 4) {
-            throw new EppException('Failed to read header from the connection.');
-        }
-        $unpacked = unpack('N', $hdr);
-        $xml = fread($this->resource, ($unpacked[1] - 4));
-        $xml = preg_replace('/></', ">\n<", $xml);
-        $this->_response_log($xml);
-        return $xml;
-    }
-
-    /**
-     * writeRequest
-     */
-    public function writeRequest($xml)
-    {
-        $this->_request_log($xml);
-        if (fwrite($this->resource, pack('N', (strlen($xml) + 4)) . $xml) === false) {
-            throw new EppException('Error writing to the connection.');
-        }
-        $responseXml = $this->readResponse();
-        // Try to load the XML without namespace first
-        $r = simplexml_load_string($responseXml);
-        if ($r === false || !isset($r->response)) {
-            // If loading without namespace fails, try loading with the epp namespace
-            $r = simplexml_load_string($responseXml, null, 0, 'epp', true);
-        }
-        if ($r === false) {
-            throw new EppException('Error parsing the XML response.');
-        }
-        if (isset($r->response->result) && (int)$r->response->result->attributes()->code >= 2000) {
-            throw new EppException((string)$r->response->result->msg);
-        }
-        return $r;
-    }
-
-    /**
-     * disconnect
-     */
-    public function disconnect()
-    {
-        if (!fclose($this->resource)) {
-            throw new EppException('Error closing the connection.');
-        }
-        $this->resource = null;
-    }
-
-    /**
-    * wrapper for functions
-    */
-    public function __call($func, $args)
-    {
-        if (!function_exists($func)) {
-            throw new \Exception("Call to undefined method Epp::$func().");
-        }
-
-        if ($func === 'connect') {
-            try {
-                $result = call_user_func_array($func, $args);
-            } catch (\ErrorException $e) {
-                throw new EppException($e->getMessage());
-            }
-
-            if (!is_resource($this->resource)) {
-                throw new EppException('An error occured while trying to connect to EPP server.');
-            }
-
-            $result = null;
-        } elseif (!is_resource($this->resource)) {
-            throw new EppNotConnectedException();
-        } else {
-            array_unshift($args, $this->resource);
-            try {
-                $result = call_user_func_array($func, $args);
-            } catch (\ErrorException $e) {
-                throw new EppException($e->getMessage());
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * login
-     */
-    public function login($params = array())
-    {
-        $return = [];
-
-        try {
-            $prefix = $params['prefix'] ?? 'tembo';
-            $clID = $params['clID'] ?? '';
-            $pw = $params['pw'] ?? '';
-            $newpw = $params['newpw'] ?? null;
-            $clTRID = htmlspecialchars($prefix . '-login-' . str_replace('.', '', round(microtime(true), 3)));
-
-            $xml = new \XMLWriter();
-            $xml->openMemory();
-            $xml->startDocument('1.0', 'UTF-8');
-
-            $xml->startElement('epp');
-            $xml->writeAttribute('xmlns', 'urn:ietf:params:xml:ns:epp-1.0');
-            $xml->writeAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
-            $xml->writeAttribute('xsi:schemaLocation', 'urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd');
-
-            $xml->startElement('command');
-            $xml->startElement('login');
-
-            $xml->writeElement('clID', $clID);
-            $xml->startElement('pw');
-            $xml->writeCData($pw);
-            $xml->endElement(); // pw
-
-            if (!empty($newpw)) {
-                $xml->startElement('newPW');
-                $xml->writeCData($newpw);
-                $xml->endElement(); // newPW
-            }
-
-            $xml->startElement('options');
-            $xml->writeElement('version', '1.0');
-            $xml->writeElement('lang', 'en');
-            $xml->endElement(); // options
-
-            $xml->startElement('svcs');
-
-            $this->addLoginObjects($xml);
-            $this->addLoginExtensions($xml);
-
-            $xml->endElement(); // svcs
-            $xml->endElement(); // login
-
-            $xml->writeElement('clTRID', $clTRID);
-
-            $xml->endElement(); // command
-            $xml->endElement(); // epp
-
-            $xmlString = $xml->outputMemory();
-
-            $r = $this->writeRequest($xmlString);
-            $code = (int)$r->response->result->attributes()->code;
-
-            if ($code === 1000) {
-                $this->isLoggedIn = true;
-                $this->prefix = $prefix;
-            }
-
-            $return = [
-                'code' => $code,
-                'msg' => $r->response->result->msg
-            ];
-        } catch (\Exception $e) {
-            $return = [
-                'error' => $e->getMessage()
-            ];
-        }
-
-        return $return;
-    }
-
-    protected function addLoginObjects(\XMLWriter $xml): void
-    {
-        $xml->writeElement('objURI', 'urn:ietf:params:xml:ns:domain-1.0');
-        $xml->writeElement('objURI', 'urn:ietf:params:xml:ns:contact-1.0');
-        $xml->writeElement('objURI', 'urn:ietf:params:xml:ns:host-1.0');
-    }
-
     protected function addLoginExtensions(\XMLWriter $xml): void
     {
-        if (empty($this->loginExtensions)) {
-            return;
-        }
-
         $xml->startElement('svcExtension');
-
-        foreach ($this->loginExtensions as $uri) {
-            $xml->writeElement('extURI', $uri);
-        }
-
-        $xml->endElement();
-    }
-
-    public function setLoginExtensions(array $extURIs): void
-    {
-        $this->loginExtensions = $extURIs;
-    }
-
-    public function setLogPath(string $path): void
-    {
-        $this->logPath = rtrim($path, '/');
-        $this->loggingEnabled = true;
-
-        $this->initLoggers();
-    }
-
-    public function setLogger(LoggerInterface $logger): void
-    {
-        $this->loggingEnabled = true;
-        if (is_object($logger) && method_exists($logger, 'info')) {
-            $this->commonLogger   = $logger;
-            $this->requestLogger  = $logger;
-            $this->responseLogger = $logger;
-        }
-    }
-
-    public function setLoggers(
-        LoggerInterface $common,
-        ?LoggerInterface $request = null,
-        ?LoggerInterface $response = null
-    ): void {
-        $this->loggingEnabled = true;
-        $this->commonLogger   = $common;
-        $this->requestLogger  = $request  ?? $common;
-        $this->responseLogger = $response ?? $common;
-    }
-
-    public function disableLogging(): void
-    {
-        $this->loggingEnabled = false;
-        $this->commonLogger   = new NullLogger();
-        $this->requestLogger  = new NullLogger();
-        $this->responseLogger = new NullLogger();
-    }
-
-    protected function initLoggers(): void
-    {
-        if (!$this->loggingEnabled) {
-            return;
-        }
-
-        if (
-            !class_exists(\Monolog\Logger::class) ||
-            !class_exists(\Monolog\Handler\RotatingFileHandler::class) ||
-            !class_exists(\Monolog\Formatter\LineFormatter::class)
-        ) {
-            return;
-        }
-
-        $lineFormat = "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n";
-        $dateFormat = "Y-m-d H:i:s";
-        $formatter  = new \Monolog\Formatter\LineFormatter($lineFormat, $dateFormat);
-
-        $this->logPath = rtrim($this->logPath, '/') . '/' . (new \ReflectionClass($this))->getShortName();
-
-        if (!is_dir($this->logPath)) {
-            mkdir($this->logPath, 0750, true);
-        }
-
-        $this->responseLogger = new \Monolog\Logger('Response');
-        $this->requestLogger  = new \Monolog\Logger('Request');
-        $this->commonLogger   = new \Monolog\Logger('Tembo');
-
-        $responseHandler = new \Monolog\Handler\RotatingFileHandler($this->logPath . '/response.log', 14);
-        $requestHandler  = new \Monolog\Handler\RotatingFileHandler($this->logPath . '/request.log', 14);
-        $commonHandler   = new \Monolog\Handler\RotatingFileHandler($this->logPath . '/common.log', 14);
-
-        $responseHandler->setFormatter($formatter);
-        $requestHandler->setFormatter($formatter);
-        $commonHandler->setFormatter($formatter);
-
-        $this->responseLogger->pushHandler($responseHandler);
-        $this->requestLogger->pushHandler($requestHandler);
-        $this->commonLogger->pushHandler($commonHandler);
-    }
-
-    /**
-     * logout
-     */
-    public function logout(array $params = []): array
-    {
-        if (!$this->isLoggedIn) {
-            return [
-                'code' => 2002,
-                'msg' => 'Command use error'
-            ];
-        }
-
-        $return = [];
-
-        try {
-            $clTRID = htmlspecialchars(
-                ($this->prefix ?? 'tembo') . '-logout-' . str_replace('.', '', round(microtime(true), 3))
-            );
-
-            $xml = new \XMLWriter();
-            $xml->openMemory();
-            $xml->startDocument('1.0', 'UTF-8');
-
-            $xml->startElement('epp');
-            $xml->writeAttribute('xmlns', 'urn:ietf:params:xml:ns:epp-1.0');
-            $xml->writeAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
-            $xml->writeAttribute('xsi:schemaLocation', 'urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd');
-
-            $xml->startElement('command');
-            $xml->writeElement('logout', null);
-            $xml->writeElement('clTRID', $clTRID);
-            $xml->endElement(); // command
-
-            $xml->endElement(); // epp
-
-            $xmlString = $xml->outputMemory();
-
-            $r = $this->writeRequest($xmlString);
-            $code = (int) $r->response->result->attributes()->code;
-
-            if ($code === 1500) {
-                $this->isLoggedIn = false;
-            }
-
-            $return = [
-                'code' => $code,
-                'msg' => $r->response->result->msg
-            ];
-        } catch (\Exception $e) {
-            $return = [
-                'error' => $e->getMessage()
-            ];
-        }
-
-        return $return;
-    }
-
-    /**
-     * hello
-     */
-    public function hello()
-    {
-        if (!$this->isLoggedIn) {
-            return [
-                'code' => 2002,
-                'msg' => 'Command use error'
-            ];
-        }
-
-        try {
-            $xml = new \XMLWriter();
-            $xml->openMemory();
-            $xml->startDocument('1.0', 'UTF-8');
-
-            $xml->startElement('epp');
-            $xml->writeAttribute('xmlns', 'urn:ietf:params:xml:ns:epp-1.0');
-            $xml->writeElement('hello', null);
-            $xml->endElement(); // epp
-
-            $xmlString = $xml->outputMemory();
-
-            $r = $this->writeRequest($xmlString);
-
-            return $r->asXML();
-        } catch (\Exception $e) {
-            return [
-                'error' => $e->getMessage()
-            ];
-        }
+        $xml->writeElement('extURI', 'urn:ietf:params:xml:ns:secDNS-1.1');
+        $xml->writeElement('extURI', 'urn:ietf:params:xml:ns:rgp-1.0');
+        $xml->writeElement('extURI', 'urn:is.isnic:xml:ns:is-ext-domain-1.0');
+        $xml->writeElement('extURI', 'urn:is.isnic:xml:ns:is-ext-contact-1.0');
+        $xml->writeElement('extURI', 'urn:is.isnic:xml:ns:is-ext-host-1.0');
+        $xml->writeElement('extURI', 'urn:is.isnic:xml:ns:is-ext-list-1.0');
+        $xml->writeElement('extURI', 'urn:is.isnic:xml:ns:is-ext-account-1.0');
+        $xml->endElement(); // svcExtension
     }
 
     /**
@@ -473,9 +53,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <check>
       <host:check
@@ -537,9 +115,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
    <info>
      <host:info
@@ -619,9 +195,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+(?:\s+[^>]*)?>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <create>
       <host:create
@@ -682,9 +256,7 @@ abstract class Epp implements EppRegistryInterface
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-host-update-' . $clTRID);
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <update>
       <host:update
@@ -757,9 +329,7 @@ abstract class Epp implements EppRegistryInterface
             $to[]   = '';
 
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
      <command>
        <update>
          <host:update
@@ -811,9 +381,7 @@ abstract class Epp implements EppRegistryInterface
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-host-delete-' . $clTRID);
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
       <command>
         <delete>
           <host:delete
@@ -853,61 +421,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $text = '';
-            foreach ($params['contact'] as $id) {
-                $text .= '<contact:id>' . htmlspecialchars($id) . '</contact:id>' . "\n";
-            }
-            $from[] = '/{{ ids }}/';
-            $to[] = $text;
-            $from[] = '/{{ clTRID }}/';
-            $microtime = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-contact-check-' . $microtime);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <check>
-      <contact:check
-        xmlns:contact="urn:ietf:params:xml:ns:contact-1.0"
-        xsi:schemaLocation="urn:ietf:params:xml:ns:contact-1.0 contact-1.0.xsd">
-        {{ ids }}
-      </contact:check>
-    </check>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:contact-1.0')->chkData;
-
-            $i = 0;
-            foreach ($r->cd as $cd) {
-                $i++;
-                $contacts[$i]['id'] = (string)$cd->id;
-                $availStr = (string)$cd->id->attributes()->avail;
-                $contacts[$i]['avail'] = ($availStr === 'true' || $availStr === '1') ? true : false;
-                $contacts[$i]['reason'] = (string)$cd->reason;
-            }
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'contacts' => $contacts
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Contact check not supported!");
     }
 
     /**
@@ -936,9 +450,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <info>
       <contact:info
@@ -1063,15 +575,17 @@ abstract class Epp implements EppRegistryInterface
             $to[] = htmlspecialchars($params['email']);
             $from[] = '/{{ authInfo }}/';
             $to[] = htmlspecialchars($params['authInfoPw']);
+            $from[] = '/{{ isType }}/';
+            $to[] = htmlspecialchars($params['isType']);
+            $from[] = '/{{ contact_sid }}/';
+            $to[]   = htmlspecialchars($params['contact_sid'] ?? '');
             $from[] = '/{{ clTRID }}/';
             $microtime = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-contact-create-' . $microtime);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
+            $from[] = "/<[\w-]+:[\w-]+>\s*<\/[\w-]+:[\w-]+>/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <create>
       <contact:create
@@ -1098,6 +612,12 @@ abstract class Epp implements EppRegistryInterface
         </contact:authInfo>
       </contact:create>
     </create>
+    <extension>
+      <is-ext-contact:create>
+        <is-ext-contact:type>{{ isType }}</is-ext-contact:type>
+        <is-ext-contact:sid>{{ contact_sid }}</is-ext-contact:sid>
+      </is-ext-contact:create>
+    </extension>
     <clTRID>{{ clTRID }}</clTRID>
   </command>
 </epp>');
@@ -1163,15 +683,15 @@ abstract class Epp implements EppRegistryInterface
             $to[] = htmlspecialchars($params['fullphonenumber']);
             $from[] = '/{{ email }}/';
             $to[] = htmlspecialchars($params['email']);
+            $from[] = '/{{ old_pw }}/';
+            $to[] = htmlspecialchars($params['old_pw']);
             $from[] = '/{{ clTRID }}/';
             $microtime = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-contact-update-' . $microtime);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
+            $from[] = "/<[\w-]+:[\w-]+>\s*<\/[\w-]+:[\w-]+>/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <update>
       <contact:update xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xsi:schemaLocation="urn:ietf:params:xml:ns:contact-1.0 contact-1.0.xsd">
@@ -1196,6 +716,11 @@ abstract class Epp implements EppRegistryInterface
         </contact:chg>
       </contact:update>
     </update>
+    <extension>
+      <is-ext-contact:update>
+        <is-ext-contact:oldPW>{{ old_pw }}</is-ext-contact:oldPW>
+      </is-ext-contact:update>
+    </extension>
     <clTRID>{{ clTRID }}</clTRID>
   </command>
 </epp>');
@@ -1235,15 +760,15 @@ abstract class Epp implements EppRegistryInterface
             $to[]   = htmlspecialchars($params['contactid']);
             $from[] = '/{{ authInfo }}/';
             $to[] = htmlspecialchars($params['authInfo']);
+            $from[] = '/{{ old_pw }}/';
+            $to[] = htmlspecialchars($params['old_pw']);
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-contact-updateAuthinfo-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
+            $from[] = "/<[\w-]+:[\w-]+>\s*<\/[\w-]+:[\w-]+>/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
  <command>
    <update>
      <contact:update
@@ -1256,6 +781,11 @@ abstract class Epp implements EppRegistryInterface
        </contact:chg>
      </contact:update>
    </update>
+   <extension>
+     <is-ext-contact:update>
+       <is-ext-contact:oldPW>{{ old_pw }}</is-ext-contact:oldPW>
+     </is-ext-contact:update>
+   </extension>
    <clTRID>{{ clTRID }}</clTRID>
  </command>
 </epp>');
@@ -1288,64 +818,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-
-            $from[] = '/{{ id }}/';
-            $to[]   = htmlspecialchars($params['contactid']);
-
-            if ($params['command'] === 'add') {
-                $from[] = '/{{ add }}/';
-                $to[]   = "<contact:add><contact:status s=\"" . htmlspecialchars($params['status']) . "\"/></contact:add>\n";
-                $from[] = '/{{ rem }}/';
-                $to[]   = "";
-            } else if ($params['command'] === 'rem') {
-                $from[] = '/{{ add }}/';
-                $to[]   = "";
-                $from[] = '/{{ rem }}/';
-                $to[]   = "<contact:rem><contact:status s=\"" . htmlspecialchars($params['status']) . "\"/></contact:rem>\n";
-            }
-
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[]   = htmlspecialchars($this->prefix . '-contact-updateStatus-' . $clTRID);
-
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[]   = '';
-
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-     <command>
-       <update>
-         <contact:update
-               xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-           <contact:id>{{ id }}</contact:id>
-           {{ add }}
-           {{ rem }}
-         </contact:update>
-       </update>
-       <clTRID>{{ clTRID }}</clTRID>
-     </command>
-    </epp>');
-
-            $r    = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg  = (string)$r->response->result->msg;
-
-            $return = array(
-                'code' => $code,
-                'msg'  => $msg
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Contact status update not supported!");
     }
 
     /**
@@ -1360,44 +833,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ id }}/';
-            $to[] = htmlspecialchars($params['contact']);
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-contact-delete-' . $clTRID);
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
-    epp-1.0.xsd">
- <command>
-   <delete>
-     <contact:delete
-      xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-       <contact:id>{{ id }}</contact:id>
-     </contact:delete>
-   </delete>
-   <clTRID>{{ clTRID }}</clTRID>
- </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Contact delete not supported!");
     }
 
     /**
@@ -1412,125 +848,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ id }}/';
-            $to[] = htmlspecialchars($params['contactid']);
-            switch (htmlspecialchars($params['op'])) {
-                case 'request':
-                    $from[] = '/{{ authInfoPw }}/';
-                    $to[] = htmlspecialchars($params['authInfoPw']);
-                    $xmltype = 'req';
-                    break;
-                case 'query':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'query';
-                    $xmltype = 'oth';
-                    break;
-                case 'cancel':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'cancel';
-                    $xmltype = 'oth';
-                    break;
-                case 'reject':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'reject';
-                    $xmltype = 'oth';
-                    break;
-                case 'approve':
-                    $xmltype = 'apr';
-                    break;
-                default:
-                    throw new EppException('Invalid value for transfer:op specified.');
-                    break;
-            }
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-contact-transfer-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            if ($xmltype === 'req') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="request">
-                  <contact:transfer
-                   xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-                    <contact:id>{{ id }}</contact:id>
-                    <contact:authInfo>
-                      <contact:pw>{{ authInfoPw }}</contact:pw>
-                    </contact:authInfo>
-                  </contact:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            } else if ($xmltype === 'apr') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="approve">
-                  <contact:transfer
-                   xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-                    <contact:id>{{ id }}</contact:id>
-                  </contact:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            } else if ($xmltype === 'oth') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="{{ type }}">
-                  <contact:transfer
-                   xmlns:contact="urn:ietf:params:xml:ns:contact-1.0">
-                    <contact:id>{{ id }}</contact:id>
-                  </contact:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            }
-            
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:contact-1.0')->trnData;
-            $id = (string)($r->id ?? 'N/A');
-            $trStatus = (string)($r->trStatus ?? 'N/A');
-            $reID = (string)($r->reID ?? 'N/A');
-            $reDate = (string)($r->reDate ?? 'N/A');
-            $acID = (string)($r->acID ?? 'N/A');
-            $acDate = (string)($r->acDate ?? 'N/A');
-            $exDate = (string)($r->exDate ?? 'N/A');
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'id' => $id,
-                'trStatus' => $trStatus,
-                'reID' => $reID,
-                'reDate' => $reDate,
-                'acID' => $acID,
-                'acDate' => $acDate,
-                'exDate' => $exDate
-            );
-
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Contact transfer not supported!");
     }
 
     /**
@@ -1560,14 +878,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <check>
       <domain:check
-        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
         {{ names }}
       </domain:check>
     </check>
@@ -1614,60 +929,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
-            $from[] = '/{{ clTRID }}/';
-            $microtime = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-domain-checkClaims-' . $microtime);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <check>
-      <domain:check
-        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
-        <domain:name>{{ name }}</domain:name>
-      </domain:check>
-    </check>
-    <extension>
-      <launch:check xmlns:launch="urn:ietf:params:xml:ns:launch-1.0" 
-       type="claims">
-          <launch:phase>claims</launch:phase>
-      </launch:check>
-    </extension>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $phase = $r->response->extension->children('urn:ietf:params:xml:ns:launch-1.0')->chkData->phase;
-            $status = $r->response->extension->children('urn:ietf:params:xml:ns:launch-1.0')->chkData->cd->name->attributes()->exists;
-            $name = $r->response->extension->children('urn:ietf:params:xml:ns:launch-1.0')->chkData->cd->name;
-            $claimKey = $r->response->extension->children('urn:ietf:params:xml:ns:launch-1.0')->chkData->cd->claimKey;
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'domain' => $name,
-                'status' => $status,
-                'phase' => $phase,
-                'claimKey' => $claimKey
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Launch extension not supported!");
     }
 
     /**
@@ -1682,132 +944,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
-            $from[] = '/{{ currency }}/';
-            $to[] = htmlspecialchars($params['currency']);
-            $from[] = '/{{ command }}/';
-            $to[] = htmlspecialchars($params['command']);
-            $from[] = '/{{ years }}/';
-            $to[] = htmlspecialchars($params['years']);
-
-            $feeNs = ($params['feeVersion'] ?? '0.9') === '1.0'
-                ? 'urn:ietf:params:xml:ns:epp:fee-1.0'
-                : 'urn:ietf:params:xml:ns:fee-0.9';
-
-            if ($feeNs === 'urn:ietf:params:xml:ns:epp:fee-1.0') {
-                // RFC 8748 / fee-1.0
-                $feeExtXml = '
-                  <fee:check xmlns:fee="urn:ietf:params:xml:ns:epp:fee-1.0">
-                    <fee:currency>'. htmlspecialchars($params['currency']) .'</fee:currency>
-                    <fee:command name="'. htmlspecialchars($params['command']) .'">
-                      <fee:period unit="y">'. htmlspecialchars($params['years']) .'</fee:period>
-                    </fee:command>
-                  </fee:check>';
-            } else {
-                // fee-0.9
-                $feeExtXml = '
-                  <fee:check xmlns:fee="urn:ietf:params:xml:ns:fee-0.9">
-                    <fee:object objURI="urn:ietf:params:xml:ns:domain-1.0">
-                      <fee:objID element="name">'. htmlspecialchars($params['domainname']) .'</fee:objID>
-                      <fee:currency>'. htmlspecialchars($params['currency']) .'</fee:currency>
-                      <fee:command>'. htmlspecialchars($params['command']) .'</fee:command>
-                      <fee:period unit="y">'. htmlspecialchars($params['years']) .'</fee:period>
-                    </fee:object>
-                  </fee:check>';
-            }
-
-            $from[] = '/{{ feeExt }}/';
-            $to[]   = $feeExtXml;
-            $from[] = '/{{ clTRID }}/';
-            $microtime = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-domain-checkFee-' . $microtime);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <check>
-      <domain:check
-        xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-        xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
-        <domain:name>{{ name }}</domain:name>
-      </domain:check>
-    </check>
-    <extension>
-      {{ feeExt }}
-    </extension>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-
-            $f = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->chkData;
-            $i = 0;
-            foreach ($f->cd as $cd) {
-                $domains[$i]['name'] = (string)$cd->name;
-                $availStr = (string)$cd->name->attributes()->avail;
-                $domains[$i]['avail'] = ($availStr === 'true' || $availStr === '1') ? true : false;
-                $domains[$i]['reason'] = (string)$cd->reason;
-                $i++;
-            }
-
-            $feeAmount = null;
-            $currency  = null;
-            $feeClass  = null;
-
-            if ($feeNs === 'urn:ietf:params:xml:ns:epp:fee-1.0') {
-                $feeExt = $r->response->extension->children('urn:ietf:params:xml:ns:epp:fee-1.0');
-                $currency = (string)($feeExt->chkData->currency ?? '');
-
-                foreach ($feeExt->chkData->cd as $cd) {
-                    if ((string)$cd->objID !== $params['domainname']) continue;
-
-                    $feeClass = (string)($cd->class ?? '');
-
-                    foreach ($cd->command as $cmd) {
-                        $attr = $cmd->attributes();
-                        if (!isset($attr['name']) || (string)$attr['name'] !== $params['command']) continue;
-
-                        $feeAmount = (string)($cmd->fee ?? '');
-                        break 2;
-                    }
-                }
-            } else {
-                $feeExt = $r->response->extension->children('urn:ietf:params:xml:ns:fee-0.9');
-
-                foreach ($feeExt->chkData->cd as $cd) {
-                    if ((string)$cd->objID !== $params['domainname']) continue;
-
-                    $feeAmount = (string)($cd->fee ?? '');
-                    $currency  = (string)($cd->currency ?? '');
-                    $feeClass  = (string)($cd->class ?? '');
-                    break;
-                }
-            }
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'domains' => $domains,
-                'feeAmount' => $feeAmount,
-                'currency' => $currency,
-                'feeClass' => $feeClass
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Fee extension not supported!");
     }
 
     /**
@@ -1836,14 +973,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <info>
       <domain:info
-       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-       xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
         <domain:name hosts="all">{{ domainname }}</domain:name>
         {{ authInfo }}
       </domain:info>
@@ -1979,14 +1113,11 @@ abstract class Epp implements EppRegistryInterface
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-domain-info-' . $clTRID);
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
       <command>
         <info>
           <domain:info
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
             <domain:name hosts="all">{{ name }}</domain:name>
           </domain:info>
         </info>
@@ -1998,17 +1129,14 @@ abstract class Epp implements EppRegistryInterface
 
             $add = $rem = array();
             $i = 0;
-
-            if (isset($r->ns->hostObj)) {
-                foreach ($r->ns->hostObj as $ns) {
-                    $i++;
-                    $ns = (string)$ns;
-                    if (!$ns) {
-                        continue;
-                    }
-
-                    $rem["ns{$i}"] = $ns;
+            foreach ($r->ns->hostObj as $ns) {
+                $i++;
+                $ns = (string)$ns;
+                if (!$ns) {
+                    continue;
                 }
+
+                $rem["ns{$i}"] = $ns;
             }
 
             foreach ($params as $k => $v) {
@@ -2049,14 +1177,11 @@ abstract class Epp implements EppRegistryInterface
                 $clTRID = str_replace('.', '', round(microtime(1), 3));
                 $to[] = htmlspecialchars($this->prefix . '-domain-updateNS-' . $clTRID);
                 $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
       <command>
         <update>
           <domain:update
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
             <domain:name>{{ name }}</domain:name>
         {{ add }}
         {{ rem }}
@@ -2121,14 +1246,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
  <command>
    <update>
      <domain:update
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
        <domain:name>{{ name }}</domain:name>
        {{ add }}
        {{ rem }}
@@ -2189,14 +1311,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
  <command>
    <update>
      <domain:update
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
        <domain:name>{{ name }}</domain:name>
        {{ add }}
        {{ rem }}
@@ -2247,14 +1366,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
  <command>
    <update>
      <domain:update
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
        <domain:name>{{ name }}</domain:name>
        <domain:chg>
          <domain:authInfo>
@@ -2357,14 +1473,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
  <command>
    <update>
      <domain:update
-           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-           xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+           xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
        <domain:name>{{ name }}</domain:name>
      </domain:update>
    </update>
@@ -2409,128 +1522,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
-            switch (htmlspecialchars($params['op'])) {
-                case 'request':
-                    $from[] = '/{{ years }}/';
-                    $to[] = (int)($params['years']);
-                    $from[] = '/{{ authInfoPw }}/';
-                    $to[] = htmlspecialchars($params['authInfoPw']);
-                    $xmltype = 'req';
-                    break;
-                case 'query':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'query';
-                    $xmltype = 'oth';
-                    break;
-                case 'cancel':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'cancel';
-                    $xmltype = 'oth';
-                    break;
-                case 'reject':
-                    $from[] = '/{{ type }}/';
-                    $to[] = 'reject';
-                    $xmltype = 'oth';
-                    break;
-                case 'approve':
-                    $xmltype = 'apr';
-                    break;
-                default:
-                    throw new EppException('Invalid value for transfer:op specified.');
-                    break;
-            }
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-domain-transfer-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            if ($xmltype === 'req') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="request">
-                  <domain:transfer
-                   xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-                    <domain:name>{{ name }}</domain:name>
-                    <domain:period unit="y">{{ years }}</domain:period>
-                    <domain:authInfo>
-                      <domain:pw>{{ authInfoPw }}</domain:pw>
-                    </domain:authInfo>
-                  </domain:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            } else if ($xmltype === 'apr') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="approve">
-                  <domain:transfer
-                   xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-                    <domain:name>{{ name }}</domain:name>
-                  </domain:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            } else if ($xmltype === 'oth') {
-                $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-              xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-              <command>
-                <transfer op="{{ type }}">
-                  <domain:transfer
-                   xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-                    <domain:name>{{ name }}</domain:name>
-                  </domain:transfer>
-                </transfer>
-                <clTRID>{{ clTRID }}</clTRID>
-              </command>
-            </epp>');
-            }
-            
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->trnData;
-            $name = (string)($r->name ?? 'N/A');
-            $trStatus = (string)($r->trStatus ?? 'N/A');
-            $reID = (string)($r->reID ?? 'N/A');
-            $reDate = (string)($r->reDate ?? 'N/A');
-            $acID = (string)($r->acID ?? 'N/A');
-            $acDate = (string)($r->acDate ?? 'N/A');
-            $exDate = (string)($r->exDate ?? 'N/A');
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'name' => $name,
-                'trStatus' => $trStatus,
-                'reID' => $reID,
-                'reDate' => $reDate,
-                'acID' => $acID,
-                'acDate' => $acDate,
-                'exDate' => $exDate
-            );
-
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Domain transfer not supported! Use domain:update");
     }
 
     /**
@@ -2590,15 +1582,17 @@ abstract class Epp implements EppRegistryInterface
 
             $from[] = '/{{ authInfoPw }}/';
             $to[] = htmlspecialchars($params['authInfoPw']);
+            $from[] = '/{{ domain_card_id }}/';
+            $to[] = htmlspecialchars($params['domain_card_id']);
+            $from[] = '/{{ domain_card_cvc }}/';
+            $to[] = htmlspecialchars($params['domain_card_cvc']);
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-domain-create-' . $clTRID);
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <create>
       <domain:create
@@ -2615,6 +1609,12 @@ abstract class Epp implements EppRegistryInterface
         </domain:authInfo>
       </domain:create>
     </create>
+    <extension>
+      <is-ext-domain:create>
+        <is-ext-domain:cardID>{{ domain_card_id }}</is-ext-domain:cardID>
+        <is-ext-domain:cardCVC>{{ domain_card_cvc }}</is-ext-domain:cardCVC>
+      </is-ext-domain:create>
+    </extension>
     <clTRID>{{ clTRID }}</clTRID>
   </command>
 </epp>');
@@ -2699,6 +1699,10 @@ abstract class Epp implements EppRegistryInterface
 
             $from[] = '/{{ authInfoPw }}/';
             $to[] = htmlspecialchars($params['authInfoPw']);
+            $from[] = '/{{ domain_card_id }}/';
+            $to[] = htmlspecialchars($params['domain_card_id']);
+            $from[] = '/{{ domain_card_cvc }}/';
+            $to[] = htmlspecialchars($params['domain_card_cvc']);
             if ($params['dnssec_records'] == 1) {
                 $from[] = '/{{ dnssec_data }}/';
                 $to[] = "<secDNS:dsData>
@@ -2728,9 +1732,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <create>
       <domain:create
@@ -2748,6 +1750,10 @@ abstract class Epp implements EppRegistryInterface
       </domain:create>
     </create>
     <extension>
+      <is-ext-domain:create>
+        <is-ext-domain:cardID>{{ domain_card_id }}</is-ext-domain:cardID>
+        <is-ext-domain:cardCVC>{{ domain_card_cvc }}</is-ext-domain:cardCVC>
+      </is-ext-domain:create>
       <secDNS:create xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1">
         {{ dnssec_data }}
       </secDNS:create>
@@ -2791,117 +1797,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
-            $from[] = '/{{ period }}/';
-            $to[] = (int)($params['period']);
-
-            $text = '';
-            if (!empty($params['nss']) && is_array($params['nss'])) {
-                foreach ($params['nss'] as $hostObj) {
-                    if (!is_array($hostObj)) {
-                        $text .= '<domain:hostObj>' . $hostObj . '</domain:hostObj>' . "\n";
-                        continue;
-                    }
-
-                    $text .= "<domain:hostAttr>\n";
-                    if (!empty($hostObj['hostName'])) {
-                        $text .= '  <domain:hostName>' . htmlspecialchars($hostObj['hostName']) . "</domain:hostName>\n";
-                    }
-                    if (!empty($hostObj['ipv4'])) {
-                        $text .= '  <domain:hostAddr ip="v4">' . htmlspecialchars($hostObj['ipv4']) . "</domain:hostAddr>\n";
-                    }
-                    if (!empty($hostObj['ipv6'])) {
-                        $text .= '  <domain:hostAddr ip="v6">' . htmlspecialchars($hostObj['ipv6']) . "</domain:hostAddr>\n";
-                    }
-                    $text .= "</domain:hostAttr>\n";
-                }
-            }
-            $from[] = '/{{ hostObjs }}/';
-            $to[]   = $text;
-
-            $from[] = '/{{ registrant }}/';
-            $to[]   = isset($params['registrant']) ? htmlspecialchars($params['registrant']): '';
-            $text = '';
-            if (!empty($params['contacts']) && is_array($params['contacts'])) {
-                foreach ($params['contacts'] as $contactType => $contactID) {
-                    $text .= '<domain:contact type="' . $contactType . '">' . $contactID . '</domain:contact>' . "\n";
-                }
-            }
-            $from[] = '/{{ contacts }}/';
-            $to[] = $text;
-
-            $from[] = '/{{ authInfoPw }}/';
-            $to[] = htmlspecialchars($params['authInfoPw']);
-            $from[] = '/{{ noticeID }}/';
-            $to[] = htmlspecialchars($params['noticeID']);
-            $from[] = '/{{ notAfter }}/';
-            $to[] = htmlspecialchars($params['notAfter']);
-            $from[] = '/{{ acceptedDate }}/';
-            $to[] = htmlspecialchars($params['acceptedDate']);
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-domain-createClaims-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <create>
-      <domain:create
-       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-        <domain:name>{{ name }}</domain:name>
-        <domain:period unit="y">{{ period }}</domain:period>
-        <domain:ns>
-          {{ hostObjs }}
-        </domain:ns>
-        <domain:registrant>{{ registrant }}</domain:registrant>
-        {{ contacts }}
-        <domain:authInfo>
-          <domain:pw>{{ authInfoPw }}</domain:pw>
-        </domain:authInfo>
-      </domain:create>
-    </create>
-      <extension>
-         <launch:create xmlns:launch="urn:ietf:params:xml:ns:launch-1.0">
-            <launch:phase>claims</launch:phase>
-            <launch:notice>
-               <launch:noticeID>{{ noticeID }}</launch:noticeID>
-               <launch:notAfter>{{ notAfter }}</launch:notAfter>
-               <launch:acceptedDate>{{ acceptedDate }}</launch:acceptedDate>
-            </launch:notice>
-         </launch:create>
-      </extension>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->creData;
-            $name = (string)$r->name;
-            $crDate = (string)$r->crDate;
-            $exDate = (string)$r->exDate;
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'name' => $name,
-                'crDate' => $crDate,
-                'exDate' => $exDate
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Launch extension not supported!");
     }
     
     /**
@@ -2916,81 +1812,7 @@ abstract class Epp implements EppRegistryInterface
             );
         }
 
-        $return = array();
-        try {
-            $from = $to = array();
-            $from[] = '/{{ name }}/';
-            $to[] = htmlspecialchars($params['domainname']);
-            $from[] = '/{{ period }}/';
-            $to[] = (int)($params['period']);
-
-            $from[] = '/{{ registrant }}/';
-            $to[]   = isset($params['registrant']) ? htmlspecialchars($params['registrant']): '';
-            $text = '';
-            if (!empty($params['contacts']) && is_array($params['contacts'])) {
-                foreach ($params['contacts'] as $contactType => $contactID) {
-                    $text .= '<domain:contact type="' . $contactType . '">' . $contactID . '</domain:contact>' . "\n";
-                }
-            }
-            $from[] = '/{{ contacts }}/';
-            $to[] = $text;
-
-            $from[] = '/{{ authInfoPw }}/';
-            $to[] = htmlspecialchars($params['authInfoPw']);
-            $from[] = '/{{ encodedSignedMark }}/';
-            $to[] = htmlspecialchars($params['encodedSignedMark']);
-            $from[] = '/{{ clTRID }}/';
-            $clTRID = str_replace('.', '', round(microtime(1), 3));
-            $to[] = htmlspecialchars($this->prefix . '-domain-createSunrise-' . $clTRID);
-            $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
-            $to[] = '';
-            $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-  <command>
-    <create>
-     <domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
-       <domain:name>{{ name }}</domain:name>
-       <domain:period unit="y">{{ period }}</domain:period>
-       <domain:registrant>{{ registrant }}</domain:registrant>
-       {{ contacts }}
-       <domain:authInfo>
-       <domain:pw>{{ authInfoPw }}</domain:pw>
-       </domain:authInfo>
-     </domain:create>
-    </create>
-     <extension>
-       <launch:create xmlns:launch="urn:ietf:params:xml:ns:launch-1.0" type="application">
-         <launch:phase>sunrise</launch:phase>
-          <smd:encodedSignedMark xmlns:smd="urn:ietf:params:xml:ns:signedMark-1.0">{{ encodedSignedMark }}</smd:encodedSignedMark>
-       </launch:create>
-     </extension>
-    <clTRID>{{ clTRID }}</clTRID>
-  </command>
-</epp>');
-            $r = $this->writeRequest($xml);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-            $r = $r->response->resData->children('urn:ietf:params:xml:ns:domain-1.0')->creData;
-            $name = (string)$r->name;
-            $crDate = (string)$r->crDate;
-            $exDate = (string)$r->exDate;
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'name' => $name,
-                'crDate' => $crDate,
-                'exDate' => $exDate
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
+        throw new EppException("Launch extension not supported!");
     }
 
     /**
@@ -3016,14 +1838,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <info>
       <domain:info
-       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-       xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+       xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
         <domain:name hosts="all">{{ name }}</domain:name>
       </domain:info>
     </info>
@@ -3042,13 +1861,15 @@ abstract class Epp implements EppRegistryInterface
             $to[] = htmlspecialchars($params['regperiod']);
             $from[] = '/{{ expDate }}/';
             $to[] = htmlspecialchars($expDate);
+            $from[] = '/{{ domain_card_id }}/';
+            $to[] = htmlspecialchars($params['domain_card_id']);
+            $from[] = '/{{ domain_card_cvc }}/';
+            $to[] = htmlspecialchars($params['domain_card_cvc']);
             $from[] = '/{{ clTRID }}/';
             $clTRID = str_replace('.', '', round(microtime(1), 3));
             $to[] = htmlspecialchars($this->prefix . '-domain-renew-' . $clTRID);
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <renew>
       <domain:renew
@@ -3058,6 +1879,12 @@ abstract class Epp implements EppRegistryInterface
         <domain:period unit="y">{{ regperiod }}</domain:period>
       </domain:renew>
     </renew>
+    <extension>
+      <is-ext-domain:renew>
+        <is-ext-domain:cardID>{{ domain_card_id }}</is-ext-domain:cardID>
+        <is-ext-domain:cardCVC>{{ domain_card_cvc }}</is-ext-domain:cardCVC>
+      </is-ext-domain:renew>
+    </extension>
     <clTRID>{{ clTRID }}</clTRID>
   </command>
 </epp>');
@@ -3106,9 +1933,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
     <delete>
       <domain:delete
@@ -3159,9 +1984,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
   <command>
    <update>
      <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
@@ -3217,16 +2040,11 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-   <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
-        epp-1.0.xsd">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
      <command>
        <update>
          <domain:update
-          xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"
-          xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0
-          domain-1.0.xsd">
+          xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
            <domain:name>{{ name }}</domain:name>
            <domain:chg/>
          </domain:update>
@@ -3301,7 +2119,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-   <epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
      <command>
        <poll op="req"/>
        <clTRID>{{ clTRID }}</clTRID>
@@ -3355,7 +2173,7 @@ abstract class Epp implements EppRegistryInterface
             $from[] = "/<\w+:\w+>\s*<\/\w+:\w+>\s+/ims";
             $to[] = '';
             $xml = preg_replace($from, $to, '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-   <epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:is-ext-contact="urn:is.isnic:xml:ns:is-ext-contact-1.0" xmlns:secDNS="urn:ietf:params:xml:ns:secDNS-1.1" xmlns:is-ext-domain="urn:is.isnic:xml:ns:is-ext-domain-1.0" xmlns:ns7="urn:ietf:params:xml:ns:eppcom-1.0" xmlns:is-ext-host="urn:is.isnic:xml:ns:is-ext-host-1.0" xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xmlns:contact="urn:ietf:params:xml:ns:contact-1.0" xmlns:host="urn:ietf:params:xml:ns:host-1.0">
      <command>
        <poll op="ack" msgID="{{ message }}"/>
        <clTRID>{{ clTRID }}</clTRID>
@@ -3376,73 +2194,6 @@ abstract class Epp implements EppRegistryInterface
         }
 
         return $return;
-    }
-    
-    /**
-     * rawXml
-     */
-    public function rawXml($params = array())
-    {
-        if (!$this->isLoggedIn) {
-            return array(
-                'code' => 2002,
-                'msg' => 'Command use error'
-            );
-        }
-
-        $return = array();
-        try {
-            $r = $this->writeRequest($params['xml']);
-            $code = (int)$r->response->result->attributes()->code;
-            $msg = (string)$r->response->result->msg;
-
-            $return = array(
-                'code' => $code,
-                'msg' => $msg,
-                'xml' => $r->asXML()
-            );
-        } catch (\Exception $e) {
-            $return = array(
-                'error' => $e->getMessage()
-            );
-        }
-
-        return $return;
-    }
-
-    protected function maskSensitiveXml(string $xml): string
-    {
-        $xml = preg_replace_callback(
-            '~(<(?:[A-Za-z0-9_-]+:)?(?:pw|newPW|newPw)>\s*)(.*?)(\s*</(?:[A-Za-z0-9_-]+:)?(?:pw|newPW|newPw)>)~si',
-            static fn($m) => $m[1] . '**********' . $m[3],
-            $xml
-        );
-
-        return $xml;
-    }
-
-    public function _response_log($content)
-    {
-        if (!$this->loggingEnabled) {
-            return;
-        }
-
-        $content = $this->maskSensitiveXml((string) $content);
-
-        $this->responseLogger->info($content);
-        $this->commonLogger->info($content);
-    }
-
-    public function _request_log($content)
-    {
-        if (!$this->loggingEnabled) {
-            return;
-        }
-
-        $content = $this->maskSensitiveXml((string) $content);
-
-        $this->requestLogger->info($content);
-        $this->commonLogger->info($content);
     }
 
 }
