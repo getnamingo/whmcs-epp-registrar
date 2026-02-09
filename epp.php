@@ -2368,7 +2368,30 @@ function epp_GetContactDetailsFromDb(array $params = []): array
         ->first();
 
     if (!$c) {
-        return [];
+        // Fallback to WHMCS client owning the domain
+        $whmcs = Capsule::table('tbldomains as td')
+            ->join('tblclients as tc', 'tc.id', '=', 'td.userid')
+            ->where('td.domain', $domain)
+            ->orderByDesc('td.id')
+            ->selectRaw("CONCAT(TRIM(tc.firstname), ' ', TRIM(tc.lastname)) AS name")
+            ->addSelect([
+                'tc.companyname as org',
+                'tc.address1 as street1',
+                'tc.address2 as street2',
+                'tc.city as city',
+                'tc.state as sp',
+                'tc.postcode as pc',
+                'tc.country as cc',
+                'tc.phonenumber as voice',
+                'tc.email as email',
+            ])
+            ->first();
+
+        if (!$whmcs) {
+            return [];
+        }
+
+        $c = $whmcs;
     }
 
     return [
