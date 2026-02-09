@@ -301,6 +301,8 @@ function epp_RegisterDomain(array $params = [])
                 $createdId = $contactCreate['id'] ?? $id;
                 $contacts[$i + 1] = $createdId;
             }
+        } else {
+            $contacts[1] = strtoupper(epp_random_contact_id());
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
@@ -458,16 +460,11 @@ function epp_RegisterDomain(array $params = [])
         }
 
         if (!empty($params['gtld'])) {
-            // Check if the required module 'whmcs_registrar' is active
             if (!Capsule::table('tbladdonmodules')->where('module', 'whmcs_registrar')->exists()) {
-                logModuleCall('epp', 'precheck', 'Required module is not active', ['module' => 'epp'], '');
-            }
-
-            if (empty($params['min_data_set'])) {
+                logModuleCall('epp', 'precheck', 'Required module is not active', ['missing_module' => 'whmcs_registrar'], '');
+            } else {
                 $contactIds = epp_insertContacts($params, $contacts);
                 epp_insertDomain($params, $contactIds);
-            } else {
-                epp_insertDomain($params, []);
             }
         }
 
@@ -1204,7 +1201,7 @@ function epp_SaveRegistrarLock(array $params = [])
 function epp_GetContactDetails(array $params = [])
 {
     if (!empty($params['min_data_set'])) {
-        return [];
+        return epp_GetContactDetailsFromDb($params);
     }
 
     $return = [];
@@ -1289,7 +1286,7 @@ function epp_GetContactDetails(array $params = [])
 function epp_SaveContactDetails(array $params = [])
 {
     if (!empty($params['min_data_set'])) {
-        return ['success' => true];
+        return epp_SaveRegistrantContactToDb($params);
     }
 
     $return = [];
@@ -2275,25 +2272,27 @@ function epp_create_column()
 function epp_insertContacts($params, $contacts) {
     $contactIds = [];
 
-    for ($i = 1; $i <= 4; $i++) {
-        $contactId = Capsule::table('namingo_contact')->insertGetId([
-            'identifier' => $contacts[$i],
+    foreach ((array)$contacts as $createdId) {
+        if (empty($createdId)) {
+            continue;
+        }
+
+        $contactIds[] = Capsule::table('namingo_contact')->insertGetId([
+            'identifier' => $createdId,
             'voice' => $params['fullphonenumber'],
             'email' => $params['email'],
-            'name' => $params['firstname'] . ' ' . $params['lastname'],
-            'org' => $params['companyname'],
-            'street1' => $params['address1'],
-            'street2' => $params['address2'],
-            'street3' => $params['address3'],
-            'city' => $params['city'],
-            'sp' => $params['state'],
-            'pc' => $params['postcode'],
-            'cc' => $params['country'],        
+            'name' => trim(($params['firstname'] ?? '') . ' ' . ($params['lastname'] ?? '')),
+            'org' => $params['companyname'] ?? '',
+            'street1' => $params['address1'] ?? '',
+            'street2' => $params['address2'] ?? '',
+            'street3' => $params['address3'] ?? '',
+            'city' => $params['city'] ?? '',
+            'sp' => $params['state'] ?? '',
+            'pc' => $params['postcode'] ?? '',
+            'cc' => $params['country'] ?? '',
             'clid' => 1,
-            'crdate' => date('Y-m-d H:i:s.u')
+            'crdate' => date('Y-m-d H:i:s.u'),
         ]);
-
-        $contactIds[] = $contactId;
     }
 
     return $contactIds;
@@ -2342,6 +2341,108 @@ function epp_getWhmcsDomainIdFromNamingo($namingoDomainName) {
     return Capsule::table('tbldomains')
         ->where('domain', $namingoDomainName)
         ->value('id');
+}
+
+function epp_GetContactDetailsFromDb(array $params = []): array
+{
+    $domain = ($params['sld'] ?? '') . '.' . ltrim((string)($params['tld'] ?? ''), '.');
+    $domain = trim($domain, '.');
+
+    if ($domain === '.' || $domain === '') {
+        return [];
+    }
+
+    // Find local domain row
+    $d = Capsule::table('namingo_domain')
+        ->select('registrant')
+        ->where('name', $domain)
+        ->first();
+
+    if (!$d || empty($d->registrant)) {
+        return [];
+    }
+
+    // Load registrant contact
+    $c = Capsule::table('namingo_contact')
+        ->where('id', (int)$d->registrant)
+        ->first();
+
+    if (!$c) {
+        return [];
+    }
+
+    return [
+        'Registrant' => [
+            'Name'              => $c->name ?? '',
+            'Organization'      => $c->org ?? '',
+            'Street 1'          => $c->street1 ?? '',
+            'Street 2'          => $c->street2 ?? '',
+            'Street 3'          => $c->street3 ?? '',
+            'City'              => $c->city ?? '',
+            'State or Province' => $c->sp ?? '',
+            'Postal Code'       => $c->pc ?? '',
+            'Country Code'      => $c->cc ?? '',
+            'Phone'             => $c->voice ?? '',
+            'Fax'               => $c->fax ?? '',
+            'Email'             => $c->email ?? '',
+        ],
+    ];
+}
+
+function epp_SaveRegistrantContactToDb(array $params = []): array
+{
+    $domain = ($params['sld'] ?? '') . '.' . ltrim((string)($params['tld'] ?? ''), '.');
+    $domain = trim($domain, '.');
+
+    $a = $params['contactdetails']['Registrant'] ?? [];
+    if (empty($a)) {
+        return ['success' => true];
+    }
+
+    $name = $a['Name'] ?? ($a['Full Name'] ?? '');
+    [$firstName, $lastName] = array_pad(preg_split('/\s+/', trim($name), 2), 2, '');
+    $fullName = trim($firstName . ' ' . $lastName);
+
+    $org     = $a['Organization'] ?? ($a['Organisation Name'] ?? '');
+    $street1 = $a['Street 1'] ?? ($a['Address 1'] ?? '');
+    $street2 = $a['Street 2'] ?? ($a['Address 2'] ?? '');
+    $street3 = $a['Street 3'] ?? ($a['Address 3'] ?? '');
+    $city    = $a['City'] ?? '';
+    $sp      = $a['State or Province'] ?? ($a['State'] ?? '');
+    $pc      = $a['Postal Code'] ?? ($a['Postcode'] ?? '');
+    $cc      = $a['Country Code'] ?? ($a['Country'] ?? '');
+    $phone   = $a['Phone'] ?? '';
+    $email   = $a['Email'] ?? '';
+
+    // Find local domain row
+    $d = Capsule::table('namingo_domain')
+        ->select('registrant')
+        ->where('name', $domain)
+        ->first();
+
+    if (!$d || empty($d->registrant)) {
+        return ['error' => 'Local domain record or registrant contact not found'];
+    }
+
+    Capsule::table('namingo_contact')
+        ->where('id', (int)$d->registrant)
+        ->update([
+            'voice'      => $phone,
+            'email'      => $email,
+            'name'       => $fullName,
+            'org'        => $org,
+            'street1'    => $street1,
+            'street2'    => $street2,
+            'street3'    => $street3,
+            'city'       => $city,
+            'sp'         => $sp,
+            'pc'         => $pc,
+            'cc'         => $cc,
+            'upid'       => 1,
+            'lastupdate' => date('Y-m-d H:i:s.u'),
+        ]);
+
+    return ['success' => true];
 }
 
 function epp_random_contact_id(int $len = 10): string {
