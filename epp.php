@@ -2,7 +2,7 @@
 /**
  * Namingo EPP Registrar module for WHMCS (https://www.whmcs.com/)
  *
- * Written in 2024-2025 by Taras Kondratyuk (https://namingo.org)
+ * Written in 2024-2026 by Taras Kondratyuk (https://namingo.org)
  * Based on Generic EPP with DNSsec Registrar Module for WHMCS written in 2019 by Lilian Rudenco (info@xpanel.com)
  * Work of Lilian Rudenco is under http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
  *
@@ -176,6 +176,15 @@ function epp_getConfigArray(array $params = [])
             'Type'         => 'yesno',
             'Default'      => '',
             'Description'  => 'Indicates that this TLD is currently in the TMCH Claims Period. When enabled, TMCH Claims Notice checks will be performed.',
+        ],
+
+        'epp_debug_log' => [
+            'FriendlyName' => 'EPP Debug Logging',
+            'Type'         => 'yesno',
+            'Default'      => '',
+            'Description'  =>
+                'Write EPP requests and responses to the WHMCS Module Log for troubleshooting. ' .
+                'Enable only while troubleshooting, then disable.',
         ],
 
     ];
@@ -1009,7 +1018,7 @@ function epp_GetRegistrarLock(array $params = [])
                 continue;
             }
 
-            if (preg_match('/clientTransferProhibited/i', $st)) {
+            if (preg_match('/client(Transfer|Delete|Update)Prohibited/i', $st)) {
                 $return = 'locked';
                 break;
             }
@@ -1017,7 +1026,7 @@ function epp_GetRegistrarLock(array $params = [])
 
         return $return;
     } catch (\Throwable $e) {
-        $return = 'locked';
+        return 'locked';
     } finally {
         epp_client_logout($epp);
     }
@@ -1060,7 +1069,7 @@ function epp_SaveRegistrarLock(array $params = [])
         $add = [];
         $rem = [];
 
-        foreach (['clientDeleteProhibited', 'clientTransferProhibited'] as $st) {
+        foreach (['clientDeleteProhibited', 'clientTransferProhibited', 'clientUpdateProhibited'] as $st) {
             if (($params['lockenabled'] ?? '') === 'locked') {
                 if (!isset($status[$st])) {
                     $add[] = $st;
@@ -1992,6 +2001,10 @@ function epp_Sync(array $params = [])
 
 function epp_modulelog($send, $responsedata, $action)
 {
+    if (empty($params['epp_debug_log'])) {
+        return;
+    }
+
     $from = $to = [];
     $from[] = "/<clID>[^<]*<\/clID>/i";
     $to[] = '<clID>[REDACTED]</clID>';
