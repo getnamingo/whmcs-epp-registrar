@@ -178,6 +178,13 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Indicates that this TLD is currently in the TMCH Claims Period. When enabled, TMCH Claims Notice checks will be performed.',
         ],
 
+        'enable_fee_extension' => [
+            'FriendlyName' => 'Enable EPP Fee Extension (Premium Domains)',
+            'Type'         => 'yesno',
+            'Description'  => 'Use domainCheckFee to detect and price premium domains',
+            'Default'      => '',
+        ],
+
         'epp_debug_log' => [
             'FriendlyName' => 'EPP Debug Logging',
             'Type'         => 'yesno',
@@ -196,6 +203,20 @@ function epp_RegisterDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        
+        $currencyCode = 'USD';
+        try {
+            $currency = Capsule::table('tblcurrencies')->where('default', 1)->first();
+            if ($currency && !empty($currency->code)) {
+                $currencyCode = $currency->code;
+            }
+        } catch (\Throwable $e) {
+            // fallback to USD
+        }
+
+        $premiumEnabled      = !empty($params['premiumEnabled']);
+        $gtldEnabled         = !empty($params['gtld']);
+        $feeExtensionEnabled = !empty($params['enable_fee_extension']);
 
         $domainCheck = $epp->domainCheck([
             'domains' => [$domain],
@@ -213,9 +234,8 @@ function epp_RegisterDomain(array $params = [])
         $item = null;
 
         if (is_array($domains)) {
-            if (!empty($fqdn) && isset($domains[$fqdn]) && is_array($domains[$fqdn])) {
-                $item = $domains[$fqdn];
-
+            if (isset($domains[$domain]) && is_array($domains[$domain])) {
+                $item = $domains[$domain];
             } else {
                 $first = reset($domains);
                 if (is_array($first)) {
@@ -413,6 +433,40 @@ function epp_RegisterDomain(array $params = [])
                     'tech'    => $contacts[3] ?? null,
                     'billing' => $contacts[4] ?? null,
                 ];
+            }
+        }
+
+        if ($gtldEnabled && $feeExtensionEnabled) {
+            try {
+                $fee = $epp->domainCheckFee([
+                    'domainname' => $domain,
+                    'currency'   => $currencyCode,
+                    'command'    => 'create',
+                    'years'      => (int)($params['regperiod'] ?? 1),
+                ]);
+
+                if (!empty($params['epp_debug_log'])) {
+                    logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCheckFee'], $fee);
+                }
+
+                if (empty($fee['error'])) {
+                    $feeClass = strtolower(trim((string)($fee['feeClass'] ?? '')));
+                    $feeDomains = $fee['domains'] ?? [];
+                    if (is_array($feeDomains) && !empty($feeDomains)) {
+                        $first = reset($feeDomains);
+                        if (is_array($first) && isset($first['feeClass'])) {
+                            $feeClass = strtolower(trim((string)$first['feeClass']));
+                        }
+                    }
+
+                    if ($feeClass === 'premium' && empty($params['premiumEnabled'])) {
+                        throw new \Exception('Premium domain detected but premium domains are not enabled.');
+                    }
+                }
+            } catch (\Throwable $e) {
+                if (stripos($e->getMessage(), 'Premium domain detected') !== false) {
+                    throw $e;
+                }
             }
         }
 
@@ -931,6 +985,22 @@ function epp_CheckAvailability(array $params = [])
         $label = ltrim(strtolower($label), '.');
 
         $results = new ResultsList();
+        $currencyCode = 'USD';
+
+        try {
+            $currency = Capsule::table('tblcurrencies')
+                ->where('default', 1)
+                ->first();
+
+            if ($currency && !empty($currency->code)) {
+                $currencyCode = $currency->code;
+            }
+        } catch (\Throwable $e) {
+            // fallback to USD
+        }
+        $premiumEnabled = !empty($params['premiumEnabled']);
+        $gtldEnabled         = !empty($params['gtld']);
+        $feeExtensionEnabled = !empty($params['enable_fee_extension']);
 
         foreach ($tldsToInclude as $tld) {
             $tld = ltrim(strtolower((string) $tld), '.');
@@ -1044,8 +1114,57 @@ function epp_CheckAvailability(array $params = [])
             if ((int)$avail === 1) {
                 $searchResult->setStatus(SearchResult::STATUS_NOT_REGISTERED);
             } else {
-                // TODO: Premium domains
                 $searchResult->setStatus(SearchResult::STATUS_REGISTERED);
+            }
+
+            if (
+                (int)$avail === 1 &&
+                $premiumEnabled &&
+                $gtldEnabled &&
+                $feeExtensionEnabled
+            ) {
+                try {
+                    $domainCheckFee = $epp->domainCheckFee([
+                        'domainname' => $fqdn,
+                        'currency' => $currencyCode,
+                        'command'    => 'create',
+                        'years'      => 1,
+                    ]);
+
+                    if (empty($domainCheckFee['error'])) {
+                        if (!empty($params['epp_debug_log'])) {
+                            logModuleCall('epp', 'CheckAvailability', ['domain' => $domain, 'step' => 'domainCheckFee', 'fqdn' => $fqdn], $domainCheckFee);
+                        }
+
+                        $feeClass = strtolower(trim((string)($domainCheckFee['feeClass'] ?? '')));
+                        $feeAmount = (float)($domainCheckFee['feeAmount'] ?? 0);
+                        $feeCurrency = (string)($domainCheckFee['currency'] ?? $currencyCode);
+
+                        $feeDomains = $domainCheckFee['domains'] ?? [];
+                        if (is_array($feeDomains) && !empty($feeDomains)) {
+                            $firstFee = reset($feeDomains);
+                            if (is_array($firstFee)) {
+                                $feeClass    = strtolower(trim((string)($firstFee['feeClass'] ?? $feeClass)));
+                                $feeAmount   = (float)($firstFee['feeAmount'] ?? $feeAmount);
+                                $feeCurrency = (string)($firstFee['currency'] ?? $feeCurrency);
+                            }
+                        }
+
+                        if ($feeClass === 'premium') {
+                            $feeAmount *= 1 + \WHMCS\Domains\Pricing\Premium::markupForCost($feeAmount) / 100;
+
+                            $searchResult->setPremiumDomain(true);
+                            $searchResult->setPremiumCostPricing([
+                                'register'      => $feeAmount,
+                                'renew'         => $feeAmount,
+                                'transfer'      => $feeAmount,
+                                'CurrencyCode'  => $feeCurrency,
+                            ]);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Ignore
+                }
             }
 
             $results->append($searchResult);
