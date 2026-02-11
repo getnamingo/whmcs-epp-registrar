@@ -434,21 +434,40 @@ function epp_RegisterDomain(array $params = [])
         ];
 
         if (empty($params['min_data_set'])) {
+            $payload['registrant'] = $contacts[1] ?? null;
+
+            $mapIndex = [
+                'admin'   => 2,
+                'tech'    => 3,
+                'billing' => 4,
+            ];
+
+            if (in_array('tech', $contactTypes, true) && !in_array('admin', $contactTypes, true) && !in_array('billing', $contactTypes, true)) {
+                $mapIndex['tech'] = 2;
+            }
+
+            $contactsPayload = [];
+
+            foreach (['admin','tech','billing'] as $role) {
+                if (!in_array($role, $contactTypes, true)) {
+                    continue;
+                }
+
+                $idx = $mapIndex[$role] ?? null;
+                if ($idx && !empty($contacts[$idx])) {
+                    $contactsPayload[$role] = $contacts[$idx];
+                }
+            }
+
             if ($profile === 'EU') {
-                $payload['registrant'] = $contacts[1] ?? null;
+                $euridBilling = trim($params['eurid_billing_contact'] ?? '');
+                if ($euridBilling !== '') {
+                    $contactsPayload['billing'] = $euridBilling;
+                }
+            }
 
-                $payload['contacts'] = [
-                    'tech'    => $contacts[2] ?? null,
-                    'billing' => trim($params['eurid_billing_contact'] ?? '') ?: null,
-                ];
-            } else {
-                $payload['registrant'] = $contacts[1] ?? null;
-
-                $payload['contacts'] = [
-                    'admin'   => $contacts[2] ?? null,
-                    'tech'    => $contacts[3] ?? null,
-                    'billing' => $contacts[4] ?? null,
-                ];
+            if (!empty($contactsPayload)) {
+                $payload['contacts'] = $contactsPayload;
             }
         }
 
