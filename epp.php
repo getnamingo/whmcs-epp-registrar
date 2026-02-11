@@ -171,6 +171,13 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Optional billing contact handle for EURid. Used only when EPP profile is EU.',
         ],
 
+        'pl_contact_prefix' => [
+            'FriendlyName' => 'NASK (.pl) Contact Prefix',
+            'Type'         => 'text',
+            'Default'      => '',
+            'Description'  => 'Optional contact ID prefix for NASK (.pl). Used when EPP profile is PL.',
+        ],
+
         'tmch_claims_period_active' => [
             'FriendlyName' => 'TMCH Claims Period Active',
             'Type'         => 'yesno',
@@ -265,6 +272,7 @@ function epp_RegisterDomain(array $params = [])
             $contactTypeMap = [
                 'EU'      => ['registrant', 'tech'],                 // EURid
                 'SWITCH'=> ['registrant', 'tech'],
+                'PL'=> ['registrant'],
                 'VRSN'   => ['registrant', 'admin', 'tech', 'billing'],
                 'generic'=> ['registrant', 'admin', 'tech', 'billing'],
             ];
@@ -277,6 +285,14 @@ function epp_RegisterDomain(array $params = [])
             foreach ($contactTypes as $i => $contactType) {
 
                 $id = strtoupper(epp_random_contact_id());
+                if ($profile === 'PL') {
+                    $prefix = trim($params['pl_contact_prefix'] ?? '');
+
+                    if ($prefix !== '') {
+                        $id = $prefix . $id;
+                    }
+                }
+
                 $authInfoPw = epp_random_auth_pw();
 
                 $contactCreate = $epp->contactCreate([
