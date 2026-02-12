@@ -65,28 +65,26 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 
 ## Installation
 
-1. Use our **[Module Customizer Tool](https://namingo.org/whmcs-module/)** to generate a fine-tuned EPP registrar module specifically for your registry.
+1. Use our **[Module Customizer Tool](https://namingo.org/whmcs-module/)** to generate a fine-tuned registrar module specifically for your registry.
 
-2. Place the **generated registrar module directory** (as produced by the Module Customizer Tool) into  
-   `[WHMCS_path]/modules/registrars/`.  
-   Then place your `key.pem` and `cert.pem` files inside that same generated module directory.
+2. Place the **generated registrar module directory** (as produced by the Module Customizer Tool) into your WHMCS/Namingo Registrar installation under `[WHMCS_path]/modules/registrars/`.  
 
-3. Ensure correct file permissions:
+3. Obtain a client TLS certificate for EPP access (issued by the registry or signed by a CA accepted by the registry). Place the certificate (`cert.pem`) and its corresponding private key (`key.pem`) inside that module directory (for example `[WHMCS_path]/modules/registrars/yourmodule/`). They are required for secure EPP authentication.
+
+Ensure the files are readable by the web server user:
+
 ```bash
-chown -R www-data:www-data [WHMCS_path]/modules/registrars/[MODULE]
-chmod -R 755 [WHMCS_path]/modules/registrars/[MODULE]
+chown -R www-data:www-data [WHMCS_path]/modules/registrars/yourmodule
+chmod -R 755 [WHMCS_path]/modules/registrars/yourmodule
 ```
 
-4. Activate from Configuration -> Apps & Integrations -> (search for _[MODULE]_) -> Activate
+4. Activate from **Configuration -> Apps & Integrations -> (search for _[MODULE]_) -> Activate**, then configure it under **Configuration -> System Settings -> Domain Registrars**. Enter your registry connection details, including the EPP host, port, login credentials, and the full filesystem paths to your client TLS certificate (`cert.pem`) and private key (`key.pem`).
 
-5. Configure from Configuration -> System Settings -> Domain Registrars
+5. Add a new TLD using **Configuration -> System Settings -> Domain Pricing**, assign it to the activated registrar module, and configure the pricing as needed.
 
-6. Add a new TLD using Configuration -> System Settings -> Domain Pricing
+6. If your module includes **additional domain fields**, copy the contents of `additionalfields.php` into `[WHMCS_path]/resources/domains/additionalfields.php`. If the file already exists, **merge the contents carefully** (do not overwrite the existing file).
 
-7. If your module includes **additional domain fields**, copy the contents of  
-   `additionalfields.php` into `[WHMCS_path]/resources/domains/additionalfields.php`. If the file already exists, **merge the contents** (do not overwrite it).
-
-8. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
+7. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
 
 ```
 [
@@ -98,68 +96,57 @@ chmod -R 755 [WHMCS_path]/modules/registrars/[MODULE]
 ]
 ```
 
+## Upgrade
+
+- Before upgrading, note your current module settings.
+- Download the updated module and repeat the installation steps to replace the existing files.
+- After upgrading, verify that your module settings are still correct.
+
 ## Troubleshooting
 
-### Running Multiple Instances of the WHMCS EPP Registrar Module
+1. **Multiple EPP modules conflict**
+   - WHMCS does not allow multiple registrar modules that share the same internal function names.
+   - If you are connecting to more than one registry, you must generate each module using the Module Customizer Tool to ensure unique module names.
+   - Do not manually duplicate or rename module files, as this may cause function collisions or unexpected behavior.
+   
+2. **Network access / allowlisting**
+   - Ensure the server’s outbound IP(s) are allowlisted by the registry EPP endpoint (both **IPv4** and **IPv6**, if applicable).
 
-WHMCS **does not support running multiple instances of the same registrar module** at the same time.
+3. **IPv6 considerations**
+   - Confirm both sides support IPv6 if you intend to use it.
+   - If you encounter IPv6-related connection issues, temporarily **disable IPv6** on the client side and retry.
+   
+4. **EPP server access**
+   - If you are unsure whether your server can reach the EPP endpoint, test the connection using OpenSSL:
 
-This limitation exists because WHMCS identifies registrar modules by:
-- the **module folder name**, and
-- the **global PHP function names** defined by the module.
+   Basic test:
+   ```bash
+   openssl s_client -connect epp.example.com:700
+   ```
 
-If you try to use the same EPP registrar module for multiple registries (for example: `.eu`, `.ua`, a test registry, and a production registry), you will encounter issues such as:
-- function redeclaration errors,
-- module settings overwriting each other,
-- unpredictable behavior when provisioning or managing domains.
+   Test with client certificate:
+   ```bash
+   openssl s_client -connect epp.example.com:700 -CAfile cacert.pem -cert cert.pem -key key.pem
+   ```
+   
+   Replace the hostname and certificate paths as needed. These tests help diagnose network or TLS issues.
+   
+5. **Generating a client TLS certificate (testing only)**
+   - If you do not yet have a client certificate for EPP access, you can generate a temporary self-signed pair:
 
-The supported solution is to **duplicate the module and rename its functions** so that each registry has its own uniquely named module.
+   ```bash
+   openssl genrsa -out key.pem 2048
+   openssl req -new -x509 -key key.pem -out cert.pem -days 365
+   ```
+   
+   For production, use a certificate issued or approved by the registry (not a self-signed certificate).
 
-Each module instance:
-- has its **own configuration**
-- talks to **one specific registry**
-- avoids function name collisions
+6. **Registrar prefix**
+   - Ensure the module is configured with the correct **registrar prefix** for your registry connection.
 
-To simplify this process, we provide a **WHMCS Module Customizer Tool** that automatically:
-
-- duplicates the module,
-- renames all required functions,
-- adjusts internal references,
-- prepares the module for a specific registry.
-
-You can use the tool here:  
-👉 **https://namingo.org/whmcs-module/**
-
-This is the safest way to run **multiple EPP registries in parallel** within a single WHMCS installation.
-
-### EPP Server Access
-
-If you're unsure whether your system can access the EPP server, you can test the connection using OpenSSL. Try one or both of the following commands:
-
-1. Basic Connectivity Test:
-
-```bash
-openssl s_client -showcerts -connect epp.example.com:700
-```
-
-2. Test with Client Certificates:
-
-```bash
-openssl s_client -connect epp.example.com:700 -CAfile cacert.pem -cert cert.pem -key key.pem
-```
-
-Replace `epp.example.com` with your EPP server's hostname and adjust the paths to your certificate files (`cacert.pem`, `cert.pem`, and `key.pem`) as needed. These tests can help identify issues with SSL/TLS configurations or network connectivity.
-
-### Generating an SSL Certificate and Key
-
-If you do not have an SSL certificate and private key for secure communication with the registry, you can generate one using OpenSSL.
-
-```bash
-openssl genrsa -out key.pem 2048
-openssl req -new -x509 -key key.pem -out cert.pem -days 365
-```
-
-**Note:** For production environments, it's recommended to use a certificate signed by a trusted Certificate Authority (CA) instead of a self-signed certificate.
+7. **Transfer AuthInfo not returned by registry**
+   - Some registries (e.g. **CentralNic**, **CoCCA**) may not return the transfer AuthInfo code via standard `domain:info`.
+   - If your module does not display the transfer code, enable the option **“Set AuthInfo on Request”** in the module configuration. This forces the module to set/generate AuthInfo when requested, so it can be displayed/managed consistently.
 
 ### Need More Help?
 
