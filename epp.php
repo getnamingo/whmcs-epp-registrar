@@ -324,6 +324,8 @@ function epp_RegisterDomain(array $params = [])
                     'nin_type' => ($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null,
                     // PT-only extras
                     'vat'  => ($profile === 'PT') ? ($params['additionalfields']['VAT'] ?? null) : null,
+                    // GE-only extras
+                    'nin' => ($profile === 'GE') ? ($params['additionalfields']['NIN'] ?? null) : null,
                 ]);
 
                 if (!empty($contactCreate['error'])) {

@@ -95,3 +95,15 @@ $additionaldomainfields[".lv"][] = [
     "Size"     => "30",
     "Required" => false,
 ];
+
+// -------------------------------------------------
+// .GE — Georgia
+// -------------------------------------------------
+
+$additionaldomainfields[".ge"][] = [
+    "Name"     => "NIN",
+    "LangVar"  => "nin",
+    "Type"     => "text",
+    "Size"     => "20",
+    "Required" => true,
+];
