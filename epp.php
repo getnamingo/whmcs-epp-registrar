@@ -128,7 +128,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,EU,FR,HR,LV,MX,PL,PT,SE,SWITCH,UA,VRSN',
+            'Options'      => 'generic,GE,EU,FR,HR,LV,MX,PL,PT,SE,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -1300,7 +1300,14 @@ function epp_SaveRegistrarLock(array $params = [])
         $add = [];
         $rem = [];
 
-        foreach (['clientDeleteProhibited', 'clientTransferProhibited', 'clientUpdateProhibited'] as $st) {
+        $profile = $params['registry_profile'] ?? 'generic';
+        $lockStatuses = ['clientDeleteProhibited', 'clientTransferProhibited', 'clientUpdateProhibited'];
+
+        if ($profile === 'GE') {
+            $lockStatuses = array_diff($lockStatuses, ['clientUpdateProhibited']);
+        }
+
+        foreach ($lockStatuses as $st) {
             if (($params['lockenabled'] ?? '') === 'locked') {
                 if (!isset($status[$st])) {
                     $add[] = $st;
@@ -1558,11 +1565,57 @@ function epp_IDProtectToggle(array $params = [])
         return ['success' => true];
     }
 
-    $return = [];
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
         $flag = empty($params['idprotection']) ? 1 : 0;
+        $profile = $params['registry_profile'] ?? 'generic';
+
+        /**
+         * GE: privacy is domain-level (hiddenInWhoIs) and only for individuals
+         */
+        if ($profile === 'GE') {
+            $company = trim((string)($params['companyname'] ?? ''));
+
+            if ($company !== '') {
+                return ['error' => 'Domain privacy is available only for domains registered to individuals.'];
+            }
+
+            $enable = empty($params['idprotection']);
+            $clTRID  = str_replace('.', '', round(microtime(true), 3));
+
+            $xml = [
+                'xml' => '<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        <epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+          <command>
+            <update>
+              <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+                <domain:name>'.$domain.'</domain:name>
+                '.($enable
+                    ? '<domain:add><domain:status s="hiddenInWhoIs" lang="en"/></domain:add>'
+                    : '<domain:rem><domain:status s="hiddenInWhoIs" lang="en"/></domain:rem>'
+                ).'
+              </domain:update>
+            </update>
+            <clTRID>'.$clTRID.'</clTRID>
+          </command>
+        </epp>'
+            ];
+
+            $rawXml = $epp->rawXml($xml);
+
+            if (isset($rawXml['error'])) {
+                throw new \Exception($rawXml['error']);
+            }
+
+            if (!empty($params['epp_debug_log'])) {
+                logModuleCall('epp', 'IDProtectToggle', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
+            }
+
+            return ['success' => true];
+        }
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1638,7 +1691,7 @@ function epp_IDProtectToggle(array $params = [])
             }
         }
 
-        return $return;
+        return ['success' => true];
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
