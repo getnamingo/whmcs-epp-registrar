@@ -268,11 +268,12 @@ function epp_RegisterDomain(array $params = [])
 
         if (empty($params['min_data_set'])) {
             $contacts = [];
-            
+
             $contactTypeMap = [
                 'EU'      => ['registrant', 'tech'],                 // EURid
                 'SWITCH'=> ['registrant', 'tech'],
                 'PL'=> ['registrant'],
+                'GE'=> ['registrant'],
                 'VRSN'   => ['registrant', 'admin', 'tech', 'billing'],
                 'generic'=> ['registrant', 'admin', 'tech', 'billing'],
             ];
