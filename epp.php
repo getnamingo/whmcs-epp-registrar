@@ -546,6 +546,50 @@ function epp_RegisterDomain(array $params = [])
                 throw new \Exception((string)$domainCreate['error']);
             }
 
+            if ($profile === 'GE' && trim((string)($params['companyname'] ?? '')) === '') {
+                try {
+                    $epp = epp_client($params);
+
+                    $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+                    $clTRID = str_replace('.', '', round(microtime(1), 3));
+
+                    $xml = array(
+                        'xml' => '<?xml version="1.0" encoding="UTF-8"?>
+                            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+                               <command>
+                                  <update>
+                                     <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+                                        <domain:name>'.$domain.'</domain:name>
+                                        <domain:add>
+                                           <domain:status s="hiddenInWhoIs" lang="en" />
+                                        </domain:add>
+                                     </domain:update>
+                                  </update>
+                                <clTRID>'.$clTRID.'</clTRID>
+                              </command>
+                            </epp>');
+                    $rawXml = $epp->rawXml($xml);
+
+                    if (isset($rawXml['error'])) {
+                        throw new \Exception($rawXml['error']);
+                    }
+                    
+                    Capsule::table('tbldomains')
+                            ->where('id', (int) $params['domainid'])
+                            ->update(['idprotection' => 1]);
+
+                    if (!empty($params['epp_debug_log'])) {
+                        logModuleCall('epp', 'GEPrivacy', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
+                    }
+                } catch (\Throwable $e) {
+                    return ['error' => $e->getMessage()];
+                } finally {
+                    if ($epp) {
+                        epp_client_logout($epp);
+                    }
+                }
+            }
+
             if (!empty($params['epp_debug_log'])) {
                 logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCreate'], $domainCreate);
             }
@@ -564,7 +608,9 @@ function epp_RegisterDomain(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -597,7 +643,9 @@ function epp_RenewDomain(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -662,7 +710,9 @@ function epp_TransferDomain(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -730,7 +780,9 @@ function epp_GetNameservers(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -857,7 +909,9 @@ function epp_GetDomainInformation(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1004,7 +1058,9 @@ function epp_SaveNameservers(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1212,7 +1268,9 @@ function epp_CheckAvailability(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1258,7 +1316,9 @@ function epp_GetRegistrarLock(array $params = [])
     } catch (\Throwable $e) {
         return 'locked';
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1358,7 +1418,9 @@ function epp_SaveRegistrarLock(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1443,7 +1505,9 @@ function epp_GetContactDetails(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1558,7 +1622,9 @@ function epp_SaveContactDetails(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1698,7 +1764,9 @@ function epp_IDProtectToggle(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1744,7 +1812,9 @@ function epp_GetEPPCode(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1803,7 +1873,9 @@ function epp_RegisterNameserver(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1835,7 +1907,9 @@ function epp_ModifyNameserver(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1865,7 +1939,9 @@ function epp_DeleteNameserver(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -1892,7 +1968,9 @@ function epp_RequestDelete(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2017,7 +2095,9 @@ function epp_manageDNSSECDSRecords(array $params = [])
             ],
         ];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2129,7 +2209,9 @@ function epp_OnHoldDomain(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2196,7 +2278,9 @@ function epp_UnHoldDomain(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2223,7 +2307,9 @@ function epp_ApproveTransfer($params) {
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2250,7 +2336,9 @@ function epp_CancelTransfer($params) {
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2277,7 +2365,9 @@ function epp_RejectTransfer($params) {
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2335,7 +2425,9 @@ function epp_TransferSync(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
@@ -2390,7 +2482,9 @@ function epp_Sync(array $params = [])
     } catch (\Throwable $e) {
         return ['error' => $e->getMessage()];
     } finally {
-        epp_client_logout($epp);
+        if ($epp) {
+            epp_client_logout($epp);
+        }
     }
 }
 
