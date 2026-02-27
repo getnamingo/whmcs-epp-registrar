@@ -1641,15 +1641,9 @@ function epp_IDProtectToggle(array $params = [])
         $profile = $params['registry_profile'] ?? 'generic';
 
         /**
-         * GE: privacy is domain-level (hiddenInWhoIs) and only for individuals
+         * GE: privacy is domain-level (hiddenInWhoIs)
          */
         if ($profile === 'GE') {
-            $company = trim((string)($params['companyname'] ?? ''));
-
-            if ($company !== '') {
-                return ['error' => 'Domain privacy is available only for domains registered to individuals.'];
-            }
-
             $enable = empty($params['idprotection']);
             $clTRID  = str_replace('.', '', round(microtime(true), 3));
 
