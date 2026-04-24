@@ -27,7 +27,7 @@ function epp_MetaData()
 {
     return array(
         'DisplayName' => 'EPP Registrar',
-        'APIVersion' => '1.1.0',
+        'APIVersion' => '1.1.9',
     );
 }
 
@@ -140,9 +140,21 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Enable if the registry does not return the transfer code on domain info and requires setting it manually first.',
         ],
 
+        'login_objects' => [
+            'FriendlyName' => 'EPP Login Objects',
+            'Type'        => 'textarea',
+            'Default'     => '',
+            'Rows'        => 5,
+            'Description' =>
+                'Comma-separated EPP login object URIs.<br>' .
+                'Leave empty to use defaults.<br>' .
+                '<code>urn:ietf:params:xml:ns:domain-1.0, urn:ietf:params:xml:ns:contact-1.0, urn:ietf:params:xml:ns:host-1.0</code>',
+        ],
+
         'login_extensions' => [
             'FriendlyName' => 'EPP Login Extensions',
             'Type'        => 'textarea',
+            'Default'     => '',
             'Rows'        => 5,
             'Description' =>
                 'Comma-separated EPP login extension URIs.<br>' .
@@ -2860,13 +2872,27 @@ function epp_client(array $params)
         'allow_self_signed'=> true,
     ];
     if ($profile === 'generic') {
-        $raw = $params['login_extensions'] ?? '';
-        $info['loginExtensions'] = trim($raw) !== ''
-            ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $raw))))
+        $rawObjects = $params['login_objects'] ?? '';
+
+        $info['loginObjects'] = trim($rawObjects) !== ''
+            ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $rawObjects))))
+            : [
+                'urn:ietf:params:xml:ns:domain-1.0',
+                'urn:ietf:params:xml:ns:contact-1.0',
+                'urn:ietf:params:xml:ns:host-1.0',
+            ];
+
+        $epp->setLoginObjects($info['loginObjects']);
+
+        $rawExtensions = $params['login_extensions'] ?? '';
+
+        $info['loginExtensions'] = trim($rawExtensions) !== ''
+            ? array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $rawExtensions))))
             : [
                 'urn:ietf:params:xml:ns:secDNS-1.1',
                 'urn:ietf:params:xml:ns:rgp-1.0',
             ];
+
         $epp->setLoginExtensions($info['loginExtensions']);
     }
 
