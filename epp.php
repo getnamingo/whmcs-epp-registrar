@@ -608,8 +608,8 @@ function epp_RegisterDomain(array $params = [])
         }
 
         if (!empty($params['gtld'])) {
-            if (!Capsule::table('tbladdonmodules')->where('module', 'whmcs_registrar')->exists()) {
-                logModuleCall('epp', 'precheck', 'Required module is not active', ['missing_module' => 'whmcs_registrar'], '');
+            if (!Capsule::table('tbladdonmodules')->where('module', 'namingo_registrar')->exists()) {
+                logModuleCall('epp', 'precheck', 'Required module is not active', ['missing_module' => 'namingo_registrar'], '');
             } else {
                 $contactIds = epp_insertContacts($params, $contacts);
                 epp_insertDomain($params, $contactIds);
