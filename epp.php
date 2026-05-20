@@ -2400,7 +2400,7 @@ function epp_TransferSync(array $params = [])
         $trStatus = $domainTransfer['trStatus'];
         $expDate = $domainTransfer['exDate'];
         if (!empty($params['gtld'])) {
-            Capsule::table('namingo_domain')->where('name', $params['domain'])->update(['trstatus' => $trStatus]);
+            Capsule::table('namingo_domain')->where('name', $domain)->update(['trstatus' => $trStatus]);
         } else {
             Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
         }
@@ -2413,6 +2413,59 @@ function epp_TransferSync(array $params = [])
             case 'serverApproved':
                 $return['completed'] = true;
                 $return['expirydate'] = date('Y-m-d', is_numeric($expDate) ? $expDate : strtotime($expDate));
+
+                if (!empty($params['gtld'])) {
+                    if (!Capsule::table('tbladdonmodules')->where('module', 'namingo_registrar')->exists()) {
+                        logModuleCall('epp', 'precheck', 'Required module is not active', ['missing_module' => 'namingo_registrar'], '');
+                    } elseif (!Capsule::table('namingo_domain')->where('name', $domain)->exists()) {
+                        $info = $epp->domainInfo([
+                            'domainname' => $domain,
+                        ]);
+
+                        if (isset($info['error'])) {
+                            throw new \Exception($info['error']);
+                        }
+
+                        if (!empty($params['epp_debug_log'])) {
+                            logModuleCall('epp', 'TransferSync', ['domain' => $domain, 'step' => 'domainInfo'], $info);
+                        }
+
+                        $contacts = [];
+
+                        if (!empty($info['registrant'])) {
+                            $contacts[1] = $info['registrant'];
+                        }
+
+                        foreach (($info['contact'] ?? []) as $contact) {
+                            if (!is_array($contact)) {
+                                continue;
+                            }
+
+                            $type = $contact['type'] ?? null;
+                            $id   = $contact['id'] ?? null;
+
+                            if (!$type || !$id) {
+                                continue;
+                            }
+
+                            if ($type === 'admin') {
+                                $contacts[2] = $id;
+                            } elseif ($type === 'tech') {
+                                $contacts[3] = $id;
+                            } elseif ($type === 'billing') {
+                                $contacts[4] = $id;
+                            }
+                        }
+
+                        $contactIds = [];
+
+                        if (!empty($contacts)) {
+                            $contactIds = epp_insertContacts($params, $contacts);
+                        }
+
+                        epp_insertDomain($params, $contactIds);
+                    }
+                }
             break;
             case 'clientRejected':
             case 'clientCancelled':
