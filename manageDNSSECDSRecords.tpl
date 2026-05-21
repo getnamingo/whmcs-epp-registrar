@@ -83,11 +83,11 @@
                 <label for="alg1" class="col-md-4 col-form-label">Algorithm</label>
                 <div class="col-md-6">
                     <select name="alg" data-supported="True" class="form-control" id="alg1" data-required="True" data-previousvalue="">
-                        <option value="8">RSA/SHA-256 (8)</option>
-                        <option value="13">ECDSA Curve P-256 with SHA-256 (13)</option>
-                        <option value="14">ECDSA Curve P-384 with SHA-384 (14)</option>
-                        <option value="15">Ed25519 (15)</option>
-                        <option value="16">Ed448 (16)</option>
+                        <option value="8">8: RSA/SHA-256</option>
+                        <option value="13">13: ECDSA Curve P-256 with SHA-256</option>
+                        <option value="14">14: ECDSA Curve P-384 with SHA-384</option>
+                        <option value="15">15: Ed25519</option>
+                        <option value="16">16: Ed448</option>
                     </select>
                 </div>
             </div>
@@ -95,8 +95,8 @@
                 <label for="digestType" class="col-md-4 col-form-label">Digest type</label>
                 <div class="col-md-6">
                     <select name="digestType" class="form-control" id="digestType" data-supported="True" data-required="True" data-previousvalue="">
-                        <option value="2">SHA-256 (2)</option>
-                        <option value="4">SHA-384 (4)</option>
+                        <option value="2">2: SHA-256</option>
+                        <option value="4">4: SHA-384</option>
                     </select>
                 </div>
             </div>
