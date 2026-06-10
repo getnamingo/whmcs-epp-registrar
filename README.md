@@ -16,16 +16,16 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | AFNIC | .fr/others | FR | |
 | CARNET | .hr | HR | |
 | Caucasus Online | .ge | GE | |
-| CentralNic | all | | Set AuthInfo on Request |
-| CoCCA | all | | Set AuthInfo on Request |
-| CORE/Knipp | all | | |
+| CentralNic | all | | Set AuthInfo on Request / Min Data Set and gTLD Enabled (for gTLD) |
+| CoCCA | all | | Set AuthInfo on Request / Min Data Set and gTLD Enabled (for gTLD) |
+| CORE/Knipp | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | Domicilium | .im | | |
 | DRS.UA | all | | | |
 | EURid | .eu | EU | |
-| GoDaddy Registry | all | | |
-| Google Nomulus | all | | |
+| GoDaddy Registry | all | | Min Data Set and gTLD Enabled (for gTLD) |
+| Google Nomulus | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | Hostmaster | .ua | UA | |
-| Identity Digital | all | | |
+| Identity Digital | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | IIS | .se, .nu | SE | |
 | IT.COM | all | | |
 | Namingo | all | | |
@@ -39,8 +39,8 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | RyCE | all | | |
 | SIDN | all | | |
 | SWITCH | .ch, .li | SWITCH | Set AuthInfo on Request |
-| Tucows Registry | all | | |
-| Verisign | all | VRSN | |
+| Tucows Registry | all | | Min Data Set and gTLD Enabled (for gTLD) |
+| Verisign | all | VRSN | Min Data Set and gTLD Enabled (for gTLD) |
 | ZADNA | .za | | |
 | ZDNS | all | | |
 
