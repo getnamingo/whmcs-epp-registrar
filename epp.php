@@ -1376,7 +1376,7 @@ function epp_SaveRegistrarLock(array $params = [])
         $rem = [];
 
         $profile = $params['registry_profile'] ?? 'generic';
-        $lockStatuses = ['clientDeleteProhibited', 'clientTransferProhibited', 'clientUpdateProhibited'];
+        $lockStatuses = ['clientDeleteProhibited', 'clientTransferProhibited'];
 
         if ($profile === 'GE') {
             $lockStatuses = ['clientTransferProhibited', 'clientUpdateProhibited'];
