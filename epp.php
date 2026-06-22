@@ -757,6 +757,16 @@ function epp_GetNameservers(array $params = [])
             $i++;
         }
 
+        if (!empty($params['gtld'])) {
+            Capsule::table('namingo_domain')->where('name', $domain)->update([
+                'ns1' => $return['ns1'] ?? null,
+                'ns2' => $return['ns2'] ?? null,
+                'ns3' => $return['ns3'] ?? null,
+                'ns4' => $return['ns4'] ?? null,
+                'ns5' => $return['ns5'] ?? null,
+            ]);
+        }
+
         $statusList = $info['status'] ?? [];
 
         if (is_string($statusList) && $statusList !== '') {
@@ -827,6 +837,16 @@ function epp_GetDomainInformation(array $params = [])
 
             $nameservers['ns' . $i] = (string) $ns;
             $i++;
+        }
+
+        if (!empty($params['gtld'])) {
+            Capsule::table('namingo_domain')->where('name', $domain)->update([
+                'ns1' => $nameservers['ns1'] ?? null,
+                'ns2' => $nameservers['ns2'] ?? null,
+                'ns3' => $nameservers['ns3'] ?? null,
+                'ns4' => $nameservers['ns4'] ?? null,
+                'ns5' => $nameservers['ns5'] ?? null,
+            ]);
         }
 
         // Transfer lock (clientTransferProhibited => locked)
@@ -1064,6 +1084,16 @@ function epp_SaveNameservers(array $params = [])
 
         if (!empty($params['epp_debug_log'])) {
             logModuleCall('epp', 'SaveNameservers', ['domain' => $domain, 'step' => 'domainUpdateNS'], $domainUpdateNS);
+        }
+
+        if (!empty($params['gtld'])) {
+            Capsule::table('namingo_domain')->where('name', $domain)->update([
+                'ns1' => $params['ns1'] ?? null,
+                'ns2' => $params['ns2'] ?? null,
+                'ns3' => $params['ns3'] ?? null,
+                'ns4' => $params['ns4'] ?? null,
+                'ns5' => $params['ns5'] ?? null,
+            ]);
         }
 
         return ['success' => true];
@@ -2399,11 +2429,7 @@ function epp_TransferSync(array $params = [])
 
         $trStatus = $domainTransfer['trStatus'];
         $expDate = $domainTransfer['exDate'];
-        if (!empty($params['gtld'])) {
-            Capsule::table('namingo_domain')->where('name', $domain)->update(['trstatus' => $trStatus]);
-        } else {
-            Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
-        }
+        Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
 
         switch ($trStatus) {
             case 'pending':
@@ -2417,7 +2443,7 @@ function epp_TransferSync(array $params = [])
                 if (!empty($params['gtld'])) {
                     if (!Capsule::table('tbladdonmodules')->where('module', 'namingo_registrar')->exists()) {
                         logModuleCall('epp', 'precheck', 'Required module is not active', ['missing_module' => 'namingo_registrar'], '');
-                    } elseif (!Capsule::table('namingo_domain')->where('name', $domain)->exists()) {
+                    } else {
                         $info = $epp->domainInfo([
                             'domainname' => $domain,
                         ]);
@@ -2478,6 +2504,10 @@ function epp_TransferSync(array $params = [])
                     'error' => sprintf('invalid transfer status: %s', $trStatus)
                 );
             break;
+        }
+
+        if (!empty($params['gtld'])) {
+            Capsule::table('namingo_domain')->where('name', $domain)->update(['trstatus' => $trStatus]);
         }
 
         return $return;
@@ -2664,9 +2694,16 @@ function epp_insertContacts($params, $contacts) {
 function epp_insertDomain($params, $contactIds) {
     $crdate = date('Y-m-d H:i:s.u');
     $exdate = date('Y-m-d H:i:s.u', strtotime("+{$params['regperiod']} years"));
+    $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+
+    $domainId = Capsule::table('namingo_domain')->where('name', $domain)->value('id');
+
+    if ($domainId) {
+        return $domainId;
+    }
 
     $domainId = Capsule::table('namingo_domain')->insertGetId([
-        'name' => $params['sld'] . '.' . ltrim($params['tld'], '.'),
+        'name' => $domain,
         'registry_domain_id' => '',
         'clid' => 1,
         'crid' => 1,
