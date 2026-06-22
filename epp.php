@@ -559,46 +559,35 @@ function epp_RegisterDomain(array $params = [])
             }
 
             if ($profile === 'GE' && trim((string)($params['companyname'] ?? '')) === '') {
-                try {
-                    $epp = epp_client($params);
+                $clTRID = str_replace('.', '', round(microtime(1), 3));
 
-                    $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
-                    $clTRID = str_replace('.', '', round(microtime(1), 3));
+                $xml = array(
+                    'xml' => '<?xml version="1.0" encoding="UTF-8"?>
+                        <epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
+                           <command>
+                              <update>
+                                 <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
+                                    <domain:name>'.$domain.'</domain:name>
+                                    <domain:add>
+                                       <domain:status s="hiddenInWhoIs" lang="en" />
+                                    </domain:add>
+                                 </domain:update>
+                              </update>
+                            <clTRID>'.$clTRID.'</clTRID>
+                          </command>
+                        </epp>');
+                $rawXml = $epp->rawXml($xml);
 
-                    $xml = array(
-                        'xml' => '<?xml version="1.0" encoding="UTF-8"?>
-                            <epp xmlns="urn:ietf:params:xml:ns:epp-1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd">
-                               <command>
-                                  <update>
-                                     <domain:update xmlns:domain="urn:ietf:params:xml:ns:domain-1.0" xsi:schemaLocation="urn:ietf:params:xml:ns:domain-1.0 domain-1.0.xsd">
-                                        <domain:name>'.$domain.'</domain:name>
-                                        <domain:add>
-                                           <domain:status s="hiddenInWhoIs" lang="en" />
-                                        </domain:add>
-                                     </domain:update>
-                                  </update>
-                                <clTRID>'.$clTRID.'</clTRID>
-                              </command>
-                            </epp>');
-                    $rawXml = $epp->rawXml($xml);
+                if (isset($rawXml['error'])) {
+                    throw new \Exception($rawXml['error']);
+                }
 
-                    if (isset($rawXml['error'])) {
-                        throw new \Exception($rawXml['error']);
-                    }
-                    
-                    Capsule::table('tbldomains')
-                            ->where('id', (int) $params['domainid'])
-                            ->update(['idprotection' => 1]);
+                Capsule::table('tbldomains')
+                        ->where('id', (int) $params['domainid'])
+                        ->update(['idprotection' => 1]);
 
-                    if (!empty($params['epp_debug_log'])) {
-                        logModuleCall('epp', 'GEPrivacy', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
-                    }
-                } catch (\Throwable $e) {
-                    return ['error' => $e->getMessage()];
-                } finally {
-                    if ($epp) {
-                        epp_client_logout($epp);
-                    }
+                if (!empty($params['epp_debug_log'])) {
+                    logModuleCall('epp', 'GEPrivacy', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
                 }
             }
 
@@ -748,7 +737,7 @@ function epp_GetNameservers(array $params = [])
         }
 
         $i = 1;
-        foreach ($info['ns'] as $ns) {
+        foreach (($info['ns'] ?? []) as $ns) {
             if ($ns === '' || $ns === null) {
                 continue;
             }
@@ -1651,8 +1640,7 @@ function epp_SaveContactDetails(array $params = [])
             ]);
 
             if (isset($contactUpdate['error'])) {
-                echo 'ContactUpdate Error: ' . $contactUpdate['error'] . PHP_EOL;
-                return;
+                throw new \Exception((string)$contactUpdate['error']);
             }
 
             if (!empty($params['epp_debug_log'])) {
@@ -1758,7 +1746,7 @@ function epp_IDProtectToggle(array $params = [])
             if (isset($contact[$id])) {
                 continue;
             }
-            
+
             $clTRID = str_replace('.', '', round(microtime(1), 3));
 
             $xml = array(
@@ -2148,11 +2136,7 @@ function epp_ClientAreaCustomButtonArray()
 
 function epp_AdminCustomButtonArray(array $params = [])
 {
-    if (!empty($params['gtld'])) {
-        $domainid = epp_getNamingoDomainId($params['domainid']);
-    } else {
-        $domainid = $params['domainid'];
-    }
+    $domainid = $params['domainid'];
     $buttons = [];
 
     // Check for hold status
@@ -2428,7 +2412,7 @@ function epp_TransferSync(array $params = [])
         }
 
         $trStatus = $domainTransfer['trStatus'];
-        $expDate = $domainTransfer['exDate'];
+        $expDate = $domainTransfer['exDate'] ?? null;
         Capsule::table('tbldomains')->where('id', $params['domainid'])->update(['trstatus' => $trStatus]);
 
         switch ($trStatus) {
@@ -2438,7 +2422,9 @@ function epp_TransferSync(array $params = [])
             case 'clientApproved':
             case 'serverApproved':
                 $return['completed'] = true;
-                $return['expirydate'] = date('Y-m-d', is_numeric($expDate) ? $expDate : strtotime($expDate));
+                if (!empty($expDate)) {
+                    $return['expirydate'] = date('Y-m-d', is_numeric($expDate) ? $expDate : strtotime($expDate));
+                }
 
                 if (!empty($params['gtld'])) {
                     if (!Capsule::table('tbladdonmodules')->where('module', 'namingo_registrar')->exists()) {
@@ -2540,7 +2526,7 @@ function epp_Sync(array $params = [])
         }
 
         $expDate = (string)($info['exDate'] ?? '');
-        $timestamp = $expDate !== '' ? strtotime(substr($expDate, 0, 19)) : null;
+        $timestamp = !empty($expDate) ? strtotime(substr((string)$expDate, 0, 19)) : false;
         $roid = (string)($info['roid'] ?? '');
 
         if ($timestamp === false) {
@@ -2575,25 +2561,6 @@ function epp_Sync(array $params = [])
             epp_client_logout($epp);
         }
     }
-}
-
-function epp_modulelog($send, $responsedata, $action)
-{
-    if (empty($params['epp_debug_log'])) {
-        return;
-    }
-
-    $from = $to = [];
-    $from[] = "/<clID>[^<]*<\/clID>/i";
-    $to[] = '<clID>[REDACTED]</clID>';
-    $from[] = "/<pw>[^<]*<\/pw>/i";
-    $to[]   = "<pw>[REDACTED]</pw>";
-    $from[] = "/<authInfo>.*?<\/authInfo>/is";
-    $to[]   = "<authInfo>[REDACTED]</authInfo>";
-    $from[] = "/<domain:authInfo>.*?<\/domain:authInfo>/is";
-    $to[]   = "<domain:authInfo>[REDACTED]</domain:authInfo>";
-    $sendforlog = preg_replace($from, $to, $send);
-    logModuleCall('epp',$action,$sendforlog,$responsedata);
 }
 
 function epp_create_table()
