@@ -579,7 +579,7 @@ function epp_RegisterDomain(array $params = [])
                 $rawXml = $epp->rawXml($xml);
 
                 if (isset($rawXml['error'])) {
-                    throw new \Exception($rawXml['error']);
+                    throw new \Exception('GE privacy update failed: ' . $rawXml['error']);
                 }
 
                 Capsule::table('tbldomains')
