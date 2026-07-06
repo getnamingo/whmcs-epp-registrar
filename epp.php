@@ -222,7 +222,10 @@ function epp_RegisterDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
-        
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
+
         $currencyCode = 'USD';
         try {
             $currency = Capsule::table('tblcurrencies')->where('default', 1)->first();
@@ -626,6 +629,9 @@ function epp_RenewDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainRenew = $epp->domainRenew([
             'domainname' => $domain,
@@ -656,7 +662,10 @@ function epp_TransferDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
-        
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
+
         $profile = $params['registry_profile'] ?? 'generic';
         if ($profile === 'FR') {
             $domainInfo = $epp->domainInfo([
@@ -723,6 +732,9 @@ function epp_GetNameservers(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -801,7 +813,10 @@ function epp_GetDomainInformation(array $params = [])
 {
     try {
         $epp = epp_client($params);
-        $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domainUtf = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domainUtf, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domainUtf)
+            : $domainUtf;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -843,7 +858,7 @@ function epp_GetDomainInformation(array $params = [])
 
         $domainId = $params['domainid'];
         if (!empty($params['gtld'])) {
-            $domainId = epp_getWhmcsDomainIdFromNamingo($domain);
+            $domainId = epp_getWhmcsDomainIdFromNamingo($domainUtf);
         }
 
         Capsule::table('epp_domain_status')->where('domain_id', $domainId)->delete();
@@ -917,7 +932,7 @@ function epp_GetDomainInformation(array $params = [])
         }
 
         $domainObj = (new Domain())
-            ->setDomain($domain)
+            ->setDomain($domainUtf)
             ->setNameservers($nameservers)
             ->setRegistrationStatus($registrationStatus)
             ->setTransferLock($transferLock);
@@ -941,6 +956,9 @@ function epp_SaveNameservers(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1100,6 +1118,9 @@ function epp_CheckAvailability(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $searchTerm         = trim((string) ($params['searchTerm'] ?? ''));
         $punyCodeSearchTerm = trim((string) ($params['punyCodeSearchTerm'] ?? ''));
@@ -1134,6 +1155,9 @@ function epp_CheckAvailability(array $params = [])
             }
 
             $fqdn = $label . '.' . $tld;
+            $fqdn = function_exists('idn_to_ascii')
+                ? (idn_to_ascii($fqdn, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $fqdn)
+                : $fqdn;
 
             $claimsPeriodActive = !empty($params['tmch_claims_period_active']);
             if ($claimsPeriodActive) {
@@ -1311,6 +1335,9 @@ function epp_GetRegistrarLock(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1359,6 +1386,9 @@ function epp_SaveRegistrarLock(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1465,6 +1495,9 @@ function epp_GetContactDetails(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1552,6 +1585,9 @@ function epp_SaveContactDetails(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -1667,6 +1703,10 @@ function epp_IDProtectToggle(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
+
         $flag = empty($params['idprotection']) ? 1 : 0;
         $profile = $params['registry_profile'] ?? 'generic';
 
@@ -1800,6 +1840,9 @@ function epp_GetEPPCode(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         if (!empty($params['set_authinfo_on_info'])) {
             $eppcode = epp_random_auth_pw();
@@ -1851,9 +1894,12 @@ function epp_RegisterNameserver(array $params = [])
     $return = [];
     try {
         $epp = epp_client($params);
+        $nameserver = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($params['nameserver'], IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $params['nameserver'])
+            : $params['nameserver'];
 
         $hostCheck = $epp->hostCheck([
-            'hostname' => $params['nameserver'],
+            'hostname' => $nameserver,
         ]);
 
         if (isset($hostCheck['error'])) {
@@ -1861,7 +1907,7 @@ function epp_RegisterNameserver(array $params = [])
         }
 
         if (!empty($params['epp_debug_log'])) {
-            logModuleCall('epp', 'RegisterNameserver', ['hostname' => $params['nameserver'], 'step' => 'hostCheck'], $hostCheck);
+            logModuleCall('epp', 'RegisterNameserver', ['hostname' => $nameserver, 'step' => 'hostCheck'], $hostCheck);
         }
 
         $first = reset($hostCheck['hosts']);
@@ -1881,7 +1927,7 @@ function epp_RegisterNameserver(array $params = [])
         }
 
         $hostCreate = $epp->hostCreate([
-            'hostname'  => $params['nameserver'],
+            'hostname'  => $nameserver,
             'ipaddress' => $params['ipaddress'],
         ]);
 
@@ -1890,7 +1936,7 @@ function epp_RegisterNameserver(array $params = [])
         }
 
         if (!empty($params['epp_debug_log'])) {
-            logModuleCall('epp', 'RegisterNameserver', ['hostname' => $params['nameserver'], 'step' => 'hostCreate'], $hostCreate);
+            logModuleCall('epp', 'RegisterNameserver', ['hostname' => $nameserver, 'step' => 'hostCreate'], $hostCreate);
         }
 
         return $return;
@@ -1912,9 +1958,12 @@ function epp_ModifyNameserver(array $params = [])
     $return = [];
     try {
         $epp = epp_client($params);
+        $nameserver = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($params['nameserver'], IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $params['nameserver'])
+            : $params['nameserver'];
 
         $hostUpdate = $epp->hostUpdate([
-            'hostname'          => $params['nameserver'],
+            'hostname'          => $nameserver,
             'currentipaddress'  => $params['currentipaddress'],
             'newipaddress'      => $params['newipaddress'],
         ]);
@@ -1924,7 +1973,7 @@ function epp_ModifyNameserver(array $params = [])
         }
 
         if (!empty($params['epp_debug_log'])) {
-            logModuleCall('epp', 'ModifyNameserver', ['hostname' => $params['nameserver'], 'step' => 'hostUpdate'], $hostUpdate);
+            logModuleCall('epp', 'ModifyNameserver', ['hostname' => $nameserver, 'step' => 'hostUpdate'], $hostUpdate);
         }
 
         return $return;
@@ -1946,9 +1995,12 @@ function epp_DeleteNameserver(array $params = [])
     $return = [];
     try {
         $epp = epp_client($params);
-        
+        $nameserver = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($params['nameserver'], IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $params['nameserver'])
+            : $params['nameserver'];
+
         $hostDelete = $epp->hostDelete([
-            'hostname' => $params['nameserver'],
+            'hostname' => $nameserver,
         ]);
 
         if (isset($hostDelete['error'])) {
@@ -1956,7 +2008,7 @@ function epp_DeleteNameserver(array $params = [])
         }
 
         if (!empty($params['epp_debug_log'])) {
-            logModuleCall('epp', 'DeleteNameserver', ['hostname' => $params['nameserver'], 'step' => 'hostDelete'], $hostDelete);
+            logModuleCall('epp', 'DeleteNameserver', ['hostname' => $nameserver, 'step' => 'hostDelete'], $hostDelete);
         }
 
         return $return;
@@ -1975,6 +2027,9 @@ function epp_RequestDelete(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainDelete = $epp->domainDelete([
             'domainname' => $domain,
@@ -2004,6 +2059,9 @@ function epp_manageDNSSECDSRecords(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         if (isset($_POST['command']) && ($_POST['command'] === 'secDNSadd')) {
             $keyTag     = (int)($_POST['keyTag'] ?? 0);
@@ -2172,6 +2230,9 @@ function epp_OnHoldDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -2241,6 +2302,9 @@ function epp_UnHoldDomain(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -2309,6 +2373,9 @@ function epp_ApproveTransfer($params) {
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
@@ -2338,6 +2405,9 @@ function epp_CancelTransfer($params) {
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
@@ -2367,6 +2437,9 @@ function epp_RejectTransfer($params) {
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
@@ -2397,6 +2470,9 @@ function epp_TransferSync(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
@@ -2512,6 +2588,9 @@ function epp_Sync(array $params = [])
     try {
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+        $domain = function_exists('idn_to_ascii')
+            ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+            : $domain;
 
         $info = $epp->domainInfo([
             'domainname' => $domain,
@@ -2662,6 +2741,9 @@ function epp_insertDomain($params, $contactIds) {
     $crdate = date('Y-m-d H:i:s.u');
     $exdate = date('Y-m-d H:i:s.u', strtotime("+{$params['regperiod']} years"));
     $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
+    $domain = function_exists('idn_to_ascii')
+        ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
+        : $domain;
 
     $domainId = Capsule::table('namingo_domain')->where('name', $domain)->value('id');
 
