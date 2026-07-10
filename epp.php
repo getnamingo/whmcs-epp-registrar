@@ -27,7 +27,7 @@ function epp_MetaData()
 {
     return array(
         'DisplayName' => 'EPP Registrar',
-        'APIVersion' => '1.1.9',
+        'APIVersion' => '1.1.14',
     );
 }
 
@@ -367,6 +367,9 @@ function epp_RegisterDomain(array $params = [])
                 }
 
                 $hostname = (string)$params[$nsKey];
+                $hostname = function_exists('idn_to_ascii')
+                    ? (idn_to_ascii($hostname, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $hostname)
+                    : $hostname;
 
                 $hostCheck = $epp->hostCheck([
                     'hostname' => $hostname,
@@ -418,6 +421,10 @@ function epp_RegisterDomain(array $params = [])
                     continue;
                 }
 
+                $host = function_exists('idn_to_ascii')
+                    ? (idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $host)
+                    : $host;
+
                 $ns = ['hostName' => $host];
 
                 if (preg_match('/\.(eu|hr|ge|lv)$/i', $host)) {
@@ -436,9 +443,16 @@ function epp_RegisterDomain(array $params = [])
             }
         } else {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
-                if (!empty($params[$k])) {
-                    $nss[] = (string)$params[$k];
+                $hostname = (string)($params[$k] ?? '');
+                if ($hostname === '') {
+                    continue;
                 }
+
+                $hostname = function_exists('idn_to_ascii')
+                    ? (idn_to_ascii($hostname, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $hostname)
+                    : $hostname;
+
+                $nss[] = $hostname;
             }
         }
 
@@ -985,11 +999,16 @@ function epp_SaveNameservers(array $params = [])
             if (!$v) continue;
             if (!preg_match('/^ns\d$/i', $k)) continue;
 
-            if (in_array((string)$v, $current, true)) {
+            $v = (string)$v;
+            $v = function_exists('idn_to_ascii')
+                ? (idn_to_ascii($v, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $v)
+                : $v;
+
+            if (in_array($v, $current, true)) {
                 continue;
             }
 
-            $add[$k] = (string)$v;
+            $add[$k] = $v;
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
@@ -1045,9 +1064,16 @@ function epp_SaveNameservers(array $params = [])
 
         $final = [];
         foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
-            if (!empty($params[$k])) {
-                $final[] = (string)$params[$k];
+            $hostname = (string)($params[$k] ?? '');
+            if ($hostname === '') {
+                continue;
             }
+
+            $hostname = function_exists('idn_to_ascii')
+                ? (idn_to_ascii($hostname, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $hostname)
+                : $hostname;
+
+            $final[] = $hostname;
         }
 
         if (in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
