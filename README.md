@@ -24,6 +24,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | EURid | .eu | EU | |
 | GoDaddy Registry | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | Google Nomulus | all | | Min Data Set and gTLD Enabled (for gTLD) |
+| Hello Registry | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | Hostmaster | .ua | UA | |
 | Identity Digital | all | | Min Data Set and gTLD Enabled (for gTLD) |
 | IIS | .se, .nu | SE | |
