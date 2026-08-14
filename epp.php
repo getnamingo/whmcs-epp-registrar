@@ -204,13 +204,21 @@ function epp_getConfigArray(array $params = [])
             'Default'      => '',
         ],
 
-        'epp_debug_log' => [
+        'debug_log' => [
             'FriendlyName' => 'EPP Debug Logging',
             'Type'         => 'yesno',
             'Default'      => '',
             'Description'  =>
                 'Write EPP requests and responses to the WHMCS Module Log for troubleshooting. ' .
                 'Enable only while troubleshooting, then disable.',
+        ],
+
+        'debug_log_path' => [
+            'FriendlyName' => 'EPP Debug Log Path',
+            'Type'         => 'text',
+            'Size'         => '60',
+            'Default'      => __DIR__ . '/../log',
+            'Description'  => 'Absolute directory for raw EPP request and response logs.',
         ],
 
     ];
@@ -248,7 +256,7 @@ function epp_RegisterDomain(array $params = [])
             throw new \Exception((string)$domainCheck['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCheck'], $domainCheck);
         }
 
@@ -357,7 +365,7 @@ function epp_RegisterDomain(array $params = [])
                     throw new \Exception((string)$contactCreate['error']);
                 }
                 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'contactCreate'], $contactCreate);
                 }
 
@@ -388,7 +396,7 @@ function epp_RegisterDomain(array $params = [])
                     throw new \Exception((string)$hostCheck['error']);
                 }
                 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'hostCheck'], $hostCheck);
                 }
 
@@ -414,7 +422,7 @@ function epp_RegisterDomain(array $params = [])
                     throw new \Exception((string)$hostCreate['error']);
                 }
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'hostCreate'], $hostCreate);
                 }
             }
@@ -521,7 +529,7 @@ function epp_RegisterDomain(array $params = [])
                     'years'      => (int)($params['regperiod'] ?? 1),
                 ]);
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCheckFee'], $fee);
                 }
 
@@ -569,7 +577,7 @@ function epp_RegisterDomain(array $params = [])
                     throw new \Exception((string)$domainCreateClaims['error']);
                 }
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCreateClaims'], $domainCreateClaims);
                 }
             } else {
@@ -612,12 +620,12 @@ function epp_RegisterDomain(array $params = [])
                         ->where('id', (int) $params['domainid'])
                         ->update(['idprotection' => 1]);
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'GEPrivacy', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
                 }
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'RegisterDomain', ['domain' => $domain, 'step' => 'domainCreate'], $domainCreate);
             }
         }
@@ -665,7 +673,7 @@ function epp_RenewDomain(array $params = [])
             throw new \Exception($domainRenew['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RenewDomain', ['domain' => $domain, 'step' => 'domainRenew'], $domainRenew);
         }
 
@@ -699,7 +707,7 @@ function epp_TransferDomain(array $params = [])
                 throw new \Exception($domainInfo['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'TransferDomain', ['domain' => $domain, 'step' => 'domainInfo'], $domainInfo);
             }
 
@@ -735,7 +743,7 @@ function epp_TransferDomain(array $params = [])
             throw new \Exception($domainTransfer['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'TransferDomain', ['domain' => $domain, 'step' => 'domainTransfer'], $domainTransfer);
         }
 
@@ -767,7 +775,7 @@ function epp_GetNameservers(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'GetNameservers', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -849,7 +857,7 @@ function epp_GetDomainInformation(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'GetDomainInformation', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -991,7 +999,7 @@ function epp_SaveNameservers(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'SaveNameservers', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1037,7 +1045,7 @@ function epp_SaveNameservers(array $params = [])
                         throw new \Exception((string)$hostCheck['error']);
                     }
 
-                    if (!empty($params['epp_debug_log'])) {
+                    if (!empty($params['debug_log'])) {
                         logModuleCall('epp', 'SaveNameservers', ['domain' => $domain, 'step' => 'hostCheck'], $hostCheck);
                     }
 
@@ -1064,7 +1072,7 @@ function epp_SaveNameservers(array $params = [])
                         throw new \Exception((string)$hostCreate['error']);
                     }
                     
-                    if (!empty($params['epp_debug_log'])) {
+                    if (!empty($params['debug_log'])) {
                         logModuleCall('epp', 'SaveNameservers', ['domain' => $domain, 'step' => 'hostCreate'], $hostCreate);
                     }
                 }
@@ -1124,7 +1132,7 @@ function epp_SaveNameservers(array $params = [])
             throw new \Exception((string)$domainUpdateNS['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'SaveNameservers', ['domain' => $domain, 'step' => 'domainUpdateNS'], $domainUpdateNS);
         }
 
@@ -1204,7 +1212,7 @@ function epp_CheckAvailability(array $params = [])
                     throw new \Exception((string)$domainCheck['error']);
                 }
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'CheckAvailability', ['domain' => $domain, 'step' => 'domainCheckClaims'], $domainCheck);
                 }
 
@@ -1229,7 +1237,7 @@ function epp_CheckAvailability(array $params = [])
                         throw new \Exception((string)$domainCheck['error']);
                     }
 
-                    if (!empty($params['epp_debug_log'])) {
+                    if (!empty($params['debug_log'])) {
                         logModuleCall('epp', 'CheckAvailability', ['domain' => $domain, 'step' => 'domainCheck'], $domainCheck);
                     }
 
@@ -1265,7 +1273,7 @@ function epp_CheckAvailability(array $params = [])
                     throw new \Exception((string)$domainCheck['error']);
                 }
 
-                if (!empty($params['epp_debug_log'])) {
+                if (!empty($params['debug_log'])) {
                     logModuleCall('epp', 'CheckAvailability', ['domain' => $domain, 'step' => 'domainCheck'], $domainCheck);
                 }
 
@@ -1316,7 +1324,7 @@ function epp_CheckAvailability(array $params = [])
                     ]);
 
                     if (empty($domainCheckFee['error'])) {
-                        if (!empty($params['epp_debug_log'])) {
+                        if (!empty($params['debug_log'])) {
                             logModuleCall('epp', 'CheckAvailability', ['domain' => $domain, 'step' => 'domainCheckFee', 'fqdn' => $fqdn], $domainCheckFee);
                         }
 
@@ -1382,7 +1390,7 @@ function epp_GetRegistrarLock(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'GetRegistrarLock', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1433,7 +1441,7 @@ function epp_SaveRegistrarLock(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'SaveRegistrarLock', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1489,7 +1497,7 @@ function epp_SaveRegistrarLock(array $params = [])
                 throw new \Exception((string)$resp['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'SaveRegistrarLock', ['domain' => $domain, 'step' => 'domainUpdateStatus'], $resp);
             }
         }
@@ -1505,7 +1513,7 @@ function epp_SaveRegistrarLock(array $params = [])
                 throw new \Exception((string)$resp['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'SaveRegistrarLock', ['domain' => $domain, 'step' => 'domainUpdateStatus'], $resp);
             }
         }
@@ -1542,7 +1550,7 @@ function epp_GetContactDetails(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'GetContactDetails', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1634,7 +1642,7 @@ function epp_SaveContactDetails(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'SaveContactDetails', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1725,7 +1733,7 @@ function epp_SaveContactDetails(array $params = [])
                 throw new \Exception((string)$contactUpdate['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'SaveContactDetails', ['domain' => $domain, 'step' => 'contactUpdate'], $contactUpdate);
             }
         }
@@ -1789,7 +1797,7 @@ function epp_IDProtectToggle(array $params = [])
                 throw new \Exception($rawXml['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'IDProtectToggle', ['domain' => $domain, 'step' => 'GE rawXml'], $rawXml);
             }
 
@@ -1804,7 +1812,7 @@ function epp_IDProtectToggle(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'IDProtectToggle', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -1865,7 +1873,7 @@ function epp_IDProtectToggle(array $params = [])
                 throw new \Exception($rawXml['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'IDProtectToggle', ['domain' => $domain, 'step' => 'rawXml'], $rawXml);
             }
         }
@@ -1902,7 +1910,7 @@ function epp_GetEPPCode(array $params = [])
                 throw new \Exception($info['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'GetEPPCode', ['domain' => $domain, 'step' => 'domainUpdateAuthinfo'], $info);
             }
         } else {
@@ -1914,7 +1922,7 @@ function epp_GetEPPCode(array $params = [])
                 throw new \Exception($info['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'GetEPPCode', ['domain' => $domain, 'step' => 'domainInfo'], $info);
             }
 
@@ -1952,7 +1960,7 @@ function epp_RegisterNameserver(array $params = [])
             throw new \Exception($hostCheck['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RegisterNameserver', ['hostname' => $nameserver, 'step' => 'hostCheck'], $hostCheck);
         }
 
@@ -1981,7 +1989,7 @@ function epp_RegisterNameserver(array $params = [])
             throw new \Exception($hostCreate['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RegisterNameserver', ['hostname' => $nameserver, 'step' => 'hostCreate'], $hostCreate);
         }
 
@@ -2018,7 +2026,7 @@ function epp_ModifyNameserver(array $params = [])
             throw new \Exception($hostUpdate['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'ModifyNameserver', ['hostname' => $nameserver, 'step' => 'hostUpdate'], $hostUpdate);
         }
 
@@ -2053,7 +2061,7 @@ function epp_DeleteNameserver(array $params = [])
             throw new \Exception($hostDelete['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'DeleteNameserver', ['hostname' => $nameserver, 'step' => 'hostDelete'], $hostDelete);
         }
 
@@ -2085,7 +2093,7 @@ function epp_RequestDelete(array $params = [])
             throw new \Exception($domainDelete['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RequestDelete', ['domain' => $domain, 'step' => 'domainDelete'], $domainDelete);
         }
 
@@ -2132,7 +2140,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
                 throw new \Exception((string)$domainUpdateDNSSEC['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'manageDNSSECDSRecords', ['domain' => $domain, 'step' => 'domainUpdateDNSSEC'], $domainUpdateDNSSEC);
             }
         }
@@ -2160,7 +2168,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
                 throw new \Exception((string)$domainUpdateDNSSEC['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'manageDNSSECDSRecords', ['domain' => $domain, 'step' => 'domainUpdateDNSSEC'], $domainUpdateDNSSEC);
             }
         }
@@ -2173,7 +2181,7 @@ function epp_manageDNSSECDSRecords(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'manageDNSSECDSRecords', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -2288,7 +2296,7 @@ function epp_OnHoldDomain(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'OnHoldDomain', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -2327,7 +2335,7 @@ function epp_OnHoldDomain(array $params = [])
                 throw new \Exception((string)$domainUpdateStatus['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'OnHoldDomain', ['domain' => $domain, 'step' => 'domainUpdateStatus'], $domainUpdateStatus);
             }
         }
@@ -2360,7 +2368,7 @@ function epp_UnHoldDomain(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'UnHoldDomain', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -2399,7 +2407,7 @@ function epp_UnHoldDomain(array $params = [])
                 throw new \Exception((string)$domainUpdateStatus['error']);
             }
 
-            if (!empty($params['epp_debug_log'])) {
+            if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'UnHoldDomain', ['domain' => $domain, 'step' => 'domainUpdateStatus'], $domainUpdateStatus);
             }
         }
@@ -2432,7 +2440,7 @@ function epp_ApproveTransfer($params) {
             throw new \Exception($domainTransfer['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'ApproveTransfer', ['domain' => $domain, 'step' => 'domainTransfer'], $domainTransfer);
         }
 
@@ -2464,7 +2472,7 @@ function epp_CancelTransfer($params) {
             throw new \Exception($domainTransfer['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'CancelTransfer', ['domain' => $domain, 'step' => 'domainTransfer'], $domainTransfer);
         }
 
@@ -2496,7 +2504,7 @@ function epp_RejectTransfer($params) {
             throw new \Exception($domainTransfer['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'RejectTransfer', ['domain' => $domain, 'step' => 'domainTransfer'], $domainTransfer);
         }
 
@@ -2529,7 +2537,7 @@ function epp_TransferSync(array $params = [])
             throw new \Exception($domainTransfer['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'TransferSync', ['domain' => $domain, 'step' => 'domainTransfer'], $domainTransfer);
         }
 
@@ -2560,7 +2568,7 @@ function epp_TransferSync(array $params = [])
                             throw new \Exception($info['error']);
                         }
 
-                        if (!empty($params['epp_debug_log'])) {
+                        if (!empty($params['debug_log'])) {
                             logModuleCall('epp', 'TransferSync', ['domain' => $domain, 'step' => 'domainInfo'], $info);
                         }
 
@@ -2646,7 +2654,7 @@ function epp_Sync(array $params = [])
             throw new \Exception($info['error']);
         }
 
-        if (!empty($params['epp_debug_log'])) {
+        if (!empty($params['debug_log'])) {
             logModuleCall('epp', 'Sync', ['domain' => $domain, 'step' => 'domainInfo'], $info);
         }
 
@@ -3050,7 +3058,21 @@ function epp_client(array $params)
     $profile = $params['registry_profile'] ?? 'generic';
 
     $epp = EppRegistryFactory::create($profile);
-    $epp->disableLogging();
+
+    if (!empty($params['debug_log'])) {
+        if (
+            !class_exists(\Monolog\Logger::class)
+            || !class_exists(\Monolog\Handler\RotatingFileHandler::class)
+            || !class_exists(\Monolog\Formatter\LineFormatter::class)
+        ) {
+            throw new \RuntimeException('EPP debug logging requires monolog/monolog.');
+        }
+
+        $logPath = trim((string) ($params['debug_log_path'] ?? ''));
+        $epp->setLogPath($logPath !== '' ? $logPath : __DIR__ . '/../log');
+    } else {
+        $epp->disableLogging();
+    }
 
     $tls_version = '1.2';
     if (!empty($params['tls_version'])) {
