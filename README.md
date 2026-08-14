@@ -34,7 +34,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | NIC Chile | .cl | | |
 | NIC Mexico | .mx | MX | |
 | NIC.LV | .lv | LV | |
-| .PT | .pt | PT | **Temp disabled (NIS2)** |
+| .PT | .pt | PT | |
 | Regtons | all | | |
 | RoTLD | .ro | | |
 | RyCE | all | | |

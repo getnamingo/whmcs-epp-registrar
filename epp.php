@@ -295,6 +295,13 @@ function epp_RegisterDomain(array $params = [])
 
             $profile = $params['registry_profile'] ?? 'generic';
 
+            $ptValidation = null;
+            if ($profile === 'PT') {
+                $ptValidation = epp_getPtValidation(
+                    (string) ($params['email'] ?? '')
+                );
+            }
+
             $contactTypes = $contactTypeMap[$profile]
                 ?? $contactTypeMap['generic'];
 
@@ -339,7 +346,9 @@ function epp_RegisterDomain(array $params = [])
                     'nin' => ($profile === 'HR') ? ($params['additionalfields']['NIN'] ?? null) : null,
                     'nin_type' => ($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null,
                     // PT-only extras
-                    'vat'  => ($profile === 'PT') ? ($params['additionalfields']['VAT'] ?? null) : null,
+                    'vat' => ($profile === 'PT') ? ($params['additionalfields']['VAT'] ?? null) : null,
+                    'validated' => ($profile === 'PT') ? $ptValidation['validated'] : null,
+                    'validatedDate' => ($profile === 'PT') ? $ptValidation['validatedDate']    : null,
                     // GE-only extras
                     'nin' => ($profile === 'GE') ? ($params['additionalfields']['NIN'] ?? null) : null,
                 ]);
@@ -1609,6 +1618,8 @@ function epp_SaveContactDetails(array $params = [])
 
     $return = [];
     try {
+        $profile = $params['registry_profile'] ?? 'generic';
+
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
         $domain = function_exists('idn_to_ascii')
@@ -1684,6 +1695,13 @@ function epp_SaveContactDetails(array $params = [])
             $pc = ($a['Postal Code'] ? $a['Postal Code'] : $a['Postcode']);
             $cc = ($a['Country Code'] ? $a['Country Code'] : $a['Country']);
 
+            $ptValidation = null;
+            if ($profile === 'PT') {
+                $ptValidation = epp_getPtValidation(
+                    (string) ($a['Email'] ?? '')
+                );
+            }
+
             $contactUpdate = $epp->contactUpdate([
                 'id'               => $id,
                 'type'             => 'int',
@@ -1699,6 +1717,8 @@ function epp_SaveContactDetails(array $params = [])
                 'country'          => $cc,
                 'fullphonenumber'  => $a['Phone'],
                 'email'            => $a['Email'],
+                'validated'        => ($profile === 'PT') ? $ptValidation['validated'] : null,
+                'validatedDate'    => ($profile === 'PT') ? $ptValidation['validatedDate'] : null,
             ]);
 
             if (isset($contactUpdate['error'])) {
@@ -2975,6 +2995,54 @@ function epp_random_auth_pw(int $len = 16): string {
     }
 
     return $result;
+}
+
+function epp_getPtValidation(string $email): array
+{
+    $moduleActive = Capsule::table('tbladdonmodules')
+        ->whereIn('module', [
+            'namingo_registrar',
+            'namingo_contact_validation',
+        ])
+        ->exists();
+
+    if (!$moduleActive) {
+        throw new \RuntimeException(
+            'PT contact operations require namingo_registrar or '
+            . 'namingo_contact_validation to be active.'
+        );
+    }
+
+    $email = trim($email);
+
+    $clientId = Capsule::table('tblclients')
+        ->where('email', $email)
+        ->value('id');
+
+    if (!$clientId) {
+        throw new \RuntimeException(
+            'No WHMCS client was found for the PT contact email.'
+        );
+    }
+
+    $validation = Capsule::table('namingo_contact_validation')
+        ->where('client_id', $clientId)
+        ->orderByDesc('validation_checked_at')
+        ->first();
+
+    if (!$validation) {
+        throw new \RuntimeException(
+            'No contact-validation record was found for this client.'
+        );
+    }
+
+    return [
+        'validated' => (int) $validation->is_validated === 1
+            ? 'true'
+            : 'false',
+
+        'validatedDate' => str_replace(' ', 'T', (string) $validation->validation_checked_at) . 'Z',
+    ];
 }
 
 function epp_client(array $params)
