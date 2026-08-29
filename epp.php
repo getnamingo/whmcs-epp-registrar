@@ -27,8 +27,14 @@ function epp_MetaData()
 {
     return array(
         'DisplayName' => 'EPP Registrar',
-        'APIVersion' => '1.1.14',
+        'APIVersion' => '1.2.0',
     );
+}
+
+function epp_isMinDataSet(array $params): bool
+{
+    return !empty($params['gtld'])
+        && !empty($params['min_data_set']);
 }
 
 function epp_getConfigArray(array $params = [])
@@ -173,7 +179,7 @@ function epp_getConfigArray(array $params = [])
             'FriendlyName' => 'Use Minimum Data Set',
             'Type'         => 'yesno',
             'Default'      => '',
-            'Description'  => 'Use the ICANN Minimum Data Set.',
+            'Description'  => 'Use the ICANN Minimum Data Set. Applies only when gTLD Registry is enabled.',
         ],
 
         'eurid_billing_contact' => [
@@ -289,7 +295,7 @@ function epp_RegisterDomain(array $params = [])
             throw new \Exception($domain . ' ' . $reason);
         }
 
-        if (empty($params['min_data_set'])) {
+        if (!epp_isMinDataSet($params)) {
             $contacts = [];
 
             $contactTypeMap = [
@@ -306,7 +312,8 @@ function epp_RegisterDomain(array $params = [])
             $ptValidation = null;
             if ($profile === 'PT') {
                 $ptValidation = epp_getPtValidation(
-                    (string) ($params['email'] ?? '')
+                    (string) ($params['email'] ?? ''),
+                    $params
                 );
             }
 
@@ -338,7 +345,7 @@ function epp_RegisterDomain(array $params = [])
                     'city'            => $params['city'] ?? '',
                     'state'           => $params['state'] ?? '',
                     'postcode'        => $params['postcode'] ?? '',
-                    'country'         => $params['country'] ?? '',
+                    'country'         => $params['countrycode'] ?? $params['country'] ?? '',
                     'fullphonenumber' => $params['fullphonenumber'] ?? '',
                     'email'           => $params['email'] ?? '',
                     'authInfoPw'      => $authInfoPw,
@@ -350,15 +357,15 @@ function epp_RegisterDomain(array $params = [])
                     // LV-only extras
                     'regNr'  => ($profile === 'LV') ? ($params['additionalfields']['NIN'] ?? null) : null,
                     'vatNr'  => ($profile === 'LV') ? ($params['additionalfields']['VAT'] ?? null) : null,
-                    // HR-only extras
-                    'nin' => ($profile === 'HR') ? ($params['additionalfields']['NIN'] ?? null) : null,
+                    // HR / GE extras
+                    'nin' => in_array($profile, ['HR', 'GE'], true)
+                        ? ($params['additionalfields']['NIN'] ?? null)
+                        : null,
                     'nin_type' => ($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null,
                     // PT-only extras
                     'vat' => ($profile === 'PT') ? ($params['additionalfields']['VAT'] ?? null) : null,
                     'validated' => ($profile === 'PT') ? $ptValidation['validated'] : null,
                     'validatedDate' => ($profile === 'PT') ? $ptValidation['validatedDate']    : null,
-                    // GE-only extras
-                    'nin' => ($profile === 'GE') ? ($params['additionalfields']['NIN'] ?? null) : null,
                 ]);
 
                 if (!empty($contactCreate['error'])) {
@@ -482,7 +489,7 @@ function epp_RegisterDomain(array $params = [])
             'authInfoPw' => $authInfoPw,
         ];
 
-        if (empty($params['min_data_set'])) {
+        if (!epp_isMinDataSet($params)) {
             $payload['registrant'] = $contacts[1] ?? null;
 
             $mapIndex = [
@@ -1530,7 +1537,7 @@ function epp_SaveRegistrarLock(array $params = [])
 
 function epp_GetContactDetails(array $params = [])
 {
-    if (!empty($params['min_data_set'])) {
+    if (epp_isMinDataSet($params)) {
         return epp_GetContactDetailsFromDb($params);
     }
 
@@ -1620,7 +1627,7 @@ function epp_GetContactDetails(array $params = [])
 
 function epp_SaveContactDetails(array $params = [])
 {
-    if (!empty($params['min_data_set'])) {
+    if (epp_isMinDataSet($params)) {
         return epp_SaveRegistrantContactToDb($params);
     }
 
@@ -1706,7 +1713,8 @@ function epp_SaveContactDetails(array $params = [])
             $ptValidation = null;
             if ($profile === 'PT') {
                 $ptValidation = epp_getPtValidation(
-                    (string) ($a['Email'] ?? '')
+                    (string) ($a['Email'] ?? ''),
+                    $params
                 );
             }
 
@@ -1750,7 +1758,7 @@ function epp_SaveContactDetails(array $params = [])
 
 function epp_IDProtectToggle(array $params = [])
 {
-    if (!empty($params['min_data_set'])) {
+    if (epp_isMinDataSet($params)) {
         return ['success' => true];
     }
 
@@ -2782,7 +2790,7 @@ function epp_insertContacts($params, $contacts) {
             'city' => $params['city'] ?? '',
             'sp' => $params['state'] ?? '',
             'pc' => $params['postcode'] ?? '',
-            'cc' => $params['country'] ?? '',
+            'cc' => $params['countrycode'] ?? $params['country'] ?? '',
             'clid' => 1,
             'crdate' => date('Y-m-d H:i:s.u'),
         ]);
@@ -2871,22 +2879,34 @@ function epp_GetContactDetailsFromDb(array $params = []): array
         ->first();
 
     if (!$c) {
-        // Fallback to WHMCS client owning the domain
+        // Fallback to the contact selected on the original WHMCS order.
+        // contactid = 0 means use the default tblclients contact.
         $whmcs = Capsule::table('tbldomains as td')
+            ->leftJoin('tblorders as o', 'o.id', '=', 'td.orderid')
+            ->leftJoin('tblcontacts as tct', function ($join) {
+                $join->on('tct.id', '=', 'o.contactid')
+                    ->on('tct.userid', '=', 'td.userid');
+            })
             ->join('tblclients as tc', 'tc.id', '=', 'td.userid')
             ->where('td.domain', $domain)
             ->orderByDesc('td.id')
-            ->selectRaw("CONCAT(TRIM(tc.firstname), ' ', TRIM(tc.lastname)) AS name")
+            ->selectRaw("
+                CONCAT(
+                    TRIM(CASE WHEN tct.id IS NOT NULL THEN tct.firstname ELSE tc.firstname END),
+                    ' ',
+                    TRIM(CASE WHEN tct.id IS NOT NULL THEN tct.lastname ELSE tc.lastname END)
+                ) AS name
+            ")
             ->addSelect([
-                'tc.companyname as org',
-                'tc.address1 as street1',
-                'tc.address2 as street2',
-                'tc.city as city',
-                'tc.state as sp',
-                'tc.postcode as pc',
-                'tc.country as cc',
-                'tc.phonenumber as voice',
-                'tc.email as email',
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.companyname ELSE tc.companyname END AS org'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.address1 ELSE tc.address1 END AS street1'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.address2 ELSE tc.address2 END AS street2'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.city ELSE tc.city END AS city'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.state ELSE tc.state END AS sp'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.postcode ELSE tc.postcode END AS pc'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.country ELSE tc.country END AS cc'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.phonenumber ELSE tc.phonenumber END AS voice'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.email ELSE tc.email END AS email'),
             ])
             ->first();
 
@@ -3005,7 +3025,7 @@ function epp_random_auth_pw(int $len = 16): string {
     return $result;
 }
 
-function epp_getPtValidation(string $email): array
+function epp_getPtValidation(string $email, array $params = []): array
 {
     $moduleActive = Capsule::table('tbladdonmodules')
         ->whereIn('module', [
@@ -3023,24 +3043,107 @@ function epp_getPtValidation(string $email): array
 
     $email = trim($email);
 
-    $clientId = Capsule::table('tblclients')
-        ->where('email', $email)
-        ->value('id');
+    $clientId = 0;
+    $contactId = 0;
+    $ownerId = (int)($params['userid'] ?? 0);
+
+    /*
+     * Prefer the exact contact selected on the domain's original order.
+     * This avoids ambiguity when two contacts use the same email address.
+     */
+    $domainId = (int)($params['domainid'] ?? 0);
+
+    if ($domainId > 0) {
+        $identity = Capsule::table('tbldomains as td')
+            ->join('tblclients as tc', 'tc.id', '=', 'td.userid')
+            ->leftJoin('tblorders as o', 'o.id', '=', 'td.orderid')
+            ->leftJoin('tblcontacts as tct', function ($join) {
+                $join->on('tct.id', '=', 'o.contactid')
+                    ->on('tct.userid', '=', 'td.userid');
+            })
+            ->where('td.id', $domainId)
+            ->select([
+                'td.userid as client_id',
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.id ELSE 0 END AS contact_id'),
+                Capsule::raw('CASE WHEN tct.id IS NOT NULL THEN tct.email ELSE tc.email END AS email'),
+            ])
+            ->first();
+
+        if ($identity) {
+            $ownerId = (int)$identity->client_id;
+
+            if (strcasecmp(trim((string)$identity->email), $email) === 0) {
+                $clientId = (int)$identity->client_id;
+                $contactId = (int)$identity->contact_id;
+            }
+        }
+    }
+
+    /*
+     * Fallback for calls where the domain/order cannot be resolved, and
+     * for contact updates where the supplied email may have changed.
+     */
+    if ($clientId <= 0 && $ownerId > 0) {
+        $clientEmail = Capsule::table('tblclients')
+            ->where('id', $ownerId)
+            ->value('email');
+
+        if (
+            $clientEmail !== null
+            && strcasecmp(trim((string)$clientEmail), $email) === 0
+        ) {
+            $clientId = $ownerId;
+            $contactId = 0;
+        } else {
+            $secondaryContactId = Capsule::table('tblcontacts')
+                ->where('userid', $ownerId)
+                ->where('email', $email)
+                ->value('id');
+
+            if ($secondaryContactId) {
+                $clientId = $ownerId;
+                $contactId = (int)$secondaryContactId;
+            }
+        }
+    }
+
+    /*
+     * Last compatibility fallback for older/manual calls where WHMCS
+     * did not supply userid/domainid.
+     */
+    if ($clientId <= 0) {
+        $clientId = (int)Capsule::table('tblclients')
+            ->where('email', $email)
+            ->value('id');
+    }
+
+    if ($clientId <= 0) {
+        $contact = Capsule::table('tblcontacts')
+            ->where('email', $email)
+            ->select('id', 'userid')
+            ->first();
+
+        if ($contact) {
+            $clientId = (int)$contact->userid;
+            $contactId = (int)$contact->id;
+        }
+    }
 
     if (!$clientId) {
         throw new \RuntimeException(
-            'No WHMCS client was found for the PT contact email.'
+            'No WHMCS client or contact was found for the PT contact email.'
         );
     }
 
     $validation = Capsule::table('namingo_contact_validation')
         ->where('client_id', $clientId)
+        ->where('contact_id', $contactId)
         ->orderByDesc('validation_checked_at')
         ->first();
 
     if (!$validation) {
         throw new \RuntimeException(
-            'No contact-validation record was found for this client.'
+            'No contact-validation record was found for this WHMCS contact.'
         );
     }
 
