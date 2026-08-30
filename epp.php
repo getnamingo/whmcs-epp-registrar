@@ -297,6 +297,7 @@ function epp_RegisterDomain(array $params = [])
 
         if (!epp_isMinDataSet($params)) {
             $contacts = [];
+            $registrarPrefix = strtoupper(trim((string)($params['registrarprefix'] ?? '')));
 
             $contactTypeMap = [
                 'EU'      => ['registrant', 'tech'],                 // EURid
@@ -322,7 +323,7 @@ function epp_RegisterDomain(array $params = [])
 
             foreach ($contactTypes as $i => $contactType) {
 
-                $id = strtoupper(epp_random_contact_id());
+                $id = strtoupper(epp_random_contact_id()) . ($registrarPrefix !== '' ? '-' . $registrarPrefix : '');
                 if ($profile === 'PL') {
                     $prefix = trim($params['pl_contact_prefix'] ?? '');
 
@@ -380,7 +381,8 @@ function epp_RegisterDomain(array $params = [])
                 $contacts[$i + 1] = $createdId;
             }
         } else {
-            $contacts[1] = strtoupper(epp_random_contact_id());
+            $registrarPrefix = strtoupper(trim((string)($params['registrarprefix'] ?? '')));
+            $contacts[1] = strtoupper(epp_random_contact_id()) . ($registrarPrefix !== '' ? '-' . $registrarPrefix : '');
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
