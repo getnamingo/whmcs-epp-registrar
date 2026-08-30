@@ -408,7 +408,7 @@ function epp_RegisterDomain(array $params = [])
                 }
 
                 $items = $hostCheck['hosts'] ?? [];
-                $item  = $items[0] ?? null;
+                $item  = reset($items);
 
                 if (!$item) {
                     continue;
@@ -1057,7 +1057,7 @@ function epp_SaveNameservers(array $params = [])
                     }
 
                     $items = $hostCheck['hosts'] ?? [];
-                    $item  = $items[1] ?? null;
+                    $item  = reset($items);
 
                     if (!$item) {
                         continue;
