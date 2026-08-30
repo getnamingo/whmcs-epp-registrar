@@ -131,6 +131,14 @@ function epp_getConfigArray(array $params = [])
             'Description'  => 'Prefix used when generating registry object IDs (contacts/hosts). Use the value required by the registry, if any.',
         ],
 
+        'contact_postal_type' => [
+            'FriendlyName' => 'Contact Postal Address Type',
+            'Type'         => 'dropdown',
+            'Options'      => 'int,loc',
+            'Default'      => 'int',
+            'Description'  => 'EPP postalInfo type used when creating contacts. int = internationalized format; loc = localized format.',
+        ],
+
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
@@ -298,6 +306,7 @@ function epp_RegisterDomain(array $params = [])
         if (!epp_isMinDataSet($params)) {
             $contacts = [];
             $registrarPrefix = strtoupper(trim((string)($params['registrarprefix'] ?? '')));
+            $contactPostalType = ($params['contact_postal_type'] ?? 'int') === 'loc' ? 'loc' : 'int';
 
             $contactTypeMap = [
                 'EU'      => ['registrant', 'tech'],                 // EURid
@@ -336,7 +345,7 @@ function epp_RegisterDomain(array $params = [])
 
                 $contactCreate = $epp->contactCreate([
                     'id'              => $id,
-                    'type'            => 'int',
+                    'type'            => $contactPostalType,
                     'firstname'       => $params['firstname'] ?? '',
                     'lastname'        => $params['lastname'] ?? '',
                     'companyname'     => $params['companyname'] ?? '',
