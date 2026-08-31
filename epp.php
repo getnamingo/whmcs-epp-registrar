@@ -27,7 +27,7 @@ function epp_MetaData()
 {
     return array(
         'DisplayName' => 'EPP Registrar',
-        'APIVersion' => '1.2.0',
+        'APIVersion' => '1.1',
     );
 }
 
@@ -2693,7 +2693,7 @@ function epp_Sync(array $params = [])
             $formattedExpDate = date('Y-m-d H:i:s.000', $timestamp);
 
             Capsule::table('namingo_domain')
-                ->where('name', $params['domain'])
+                ->where('name', $domain)
                 ->update([
                     'exdate' => $formattedExpDate,
                     'registry_domain_id' => $roid
