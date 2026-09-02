@@ -37,6 +37,11 @@ function epp_isMinDataSet(array $params): bool
         && !empty($params['min_data_set']);
 }
 
+function epp_isHostAttr(array $params): bool
+{
+    return ($params['ns_mode'] ?? 'hostObj') === 'hostAttr';
+}
+
 function epp_getConfigArray(array $params = [])
 {
     if (empty($params['gtld'])) {
@@ -145,6 +150,14 @@ function epp_getConfigArray(array $params = [])
             'Options'      => 'generic,GE,EU,FR,HR,LV,MX,PL,PT,SE,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
+        ],
+
+        'ns_mode' => [
+            'FriendlyName' => 'Nameserver Mode',
+            'Type'         => 'dropdown',
+            'Options'      => 'hostObj,hostAttr',
+            'Default'      => 'hostObj',
+            'Description'  => 'hostObj uses EPP host objects (default). hostAttr embeds nameservers directly in domain commands; host create/modify/delete operations are unavailable.',
         ],
 
         'set_authinfo_on_info' => [
@@ -395,7 +408,7 @@ function epp_RegisterDomain(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if (!in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
+        if (!epp_isHostAttr($params) && !in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $nsKey) {
                 if (empty($params[$nsKey])) {
                     continue;
@@ -449,7 +462,7 @@ function epp_RegisterDomain(array $params = [])
         $period     = (int)($params['regperiod'] ?? 1);
         
         $nss = [];
-        if (in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
+        if (epp_isHostAttr($params) || in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             foreach (['ns1','ns2','ns3','ns4','ns5'] as $k) {
                 $host = (string)($params[$k] ?? '');
                 if ($host === '') {
@@ -1047,7 +1060,7 @@ function epp_SaveNameservers(array $params = [])
         }
 
         $profile = $params['registry_profile'] ?? 'generic';
-        if (!in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
+        if (!epp_isHostAttr($params) && !in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             if (!empty($add)) {
                 foreach ($add as $k => $nsName) {
                     $nsName = trim((string)$nsName);
@@ -1111,7 +1124,7 @@ function epp_SaveNameservers(array $params = [])
             $final[] = $hostname;
         }
 
-        if (in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
+        if (epp_isHostAttr($params) || in_array($profile, ['EU', 'HR', 'LV', 'GE'], true)) {
             $payload = [
                 'domainname' => $domain,
                 'nss'        => [],
@@ -1960,6 +1973,10 @@ function epp_GetEPPCode(array $params = [])
 
 function epp_RegisterNameserver(array $params = [])
 {
+    if (epp_isHostAttr($params)) {
+        return ['error' => 'Host object operations are unavailable when Nameserver Mode is hostAttr. Change the domain nameservers instead.'];
+    }
+
     if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
@@ -2024,6 +2041,10 @@ function epp_RegisterNameserver(array $params = [])
 
 function epp_ModifyNameserver(array $params = [])
 {
+    if (epp_isHostAttr($params)) {
+        return ['error' => 'Host object operations are unavailable when Nameserver Mode is hostAttr. Change the domain nameservers instead.'];
+    }
+
     if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
@@ -2061,6 +2082,10 @@ function epp_ModifyNameserver(array $params = [])
 
 function epp_DeleteNameserver(array $params = [])
 {
+    if (epp_isHostAttr($params)) {
+        return ['error' => 'Host object operations are unavailable when Nameserver Mode is hostAttr. Change the domain nameservers instead.'];
+    }
+
     if (in_array($params['registry_profile'] ?? 'generic', ['EU', 'HR', 'GE', 'LV'], true)) {
         return [];
     }
