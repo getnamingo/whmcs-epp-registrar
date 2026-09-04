@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION='1.2.1'
-# v1.2.1 currently has no uploaded release asset. Pin the source archive to the
+VERSION='1.2.2'
+# v1.2.2 currently has no uploaded release asset. Pin the source archive to the
 # commit behind the tag so a moved tag cannot silently change installer input.
 SOURCE_COMMIT='a99f2d1bd71324ca21b19e1816106575798b66d6'
 ARCHIVE="whmcs-epp-registrar-${VERSION}.tar.gz"

@@ -1765,6 +1765,33 @@ function epp_SaveContactDetails(array $params = [])
                 throw new \Exception((string)$contactUpdate['error']);
             }
 
+            // Keep Namingo's local contact copy in sync with the registry.
+            if (!empty($params['gtld'])) {
+                Capsule::table('namingo_contact')
+                    ->where('identifier', $id)
+                    ->update([
+                        'name'    => trim($name),
+                        'org'     => $org,
+                        'street1' => $street1,
+                        'street2' => $street2,
+                        'street3' => $street3,
+                        'city'    => $a['City'],
+                        'sp'      => $sp,
+                        'pc'      => $pc,
+                        'cc'      => $cc,
+                        'voice'   => $a['Phone'],
+                        'email'   => $a['Email'],
+                    ]);
+
+                if ($type === 'registrant') {
+                    Capsule::table('namingo_domain')
+                        ->where('name', $domain)
+                        ->update([
+                            'lastupdate' => Carbon::now()->toDateTimeString(),
+                        ]);
+                }
+            }
+
             if (!empty($params['debug_log'])) {
                 logModuleCall('epp', 'SaveContactDetails', ['domain' => $domain, 'step' => 'contactUpdate'], $contactUpdate);
             }
