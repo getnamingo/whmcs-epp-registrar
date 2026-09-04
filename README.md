@@ -66,26 +66,35 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 
 ## Installation
 
-1. Use our **[Module Customizer Tool](https://namingo.org/whmcs-module/)** to generate a fine-tuned registrar module specifically for your registry.
+**Minimum requirement:** WHMCS v9.0.8 installed.
 
-2. Place the **generated registrar module directory** (as produced by the Module Customizer Tool) into your WHMCS/Namingo Registrar installation under `[WHMCS_path]/modules/registrars/`.  
-
-3. Obtain a client TLS certificate for EPP access (issued by the registry or signed by a CA accepted by the registry). Place the certificate (`cert.pem`) and its corresponding private key (`key.pem`) inside that module directory (for example `[WHMCS_path]/modules/registrars/yourmodule/`). They are required for secure EPP authentication.
-
-Ensure the files are readable by the web server user:
+1. The recommended way to install is with the automated installer:
 
 ```bash
-chown -R www-data:www-data [WHMCS_path]/modules/registrars/yourmodule
-chmod -R 755 [WHMCS_path]/modules/registrars/yourmodule
+bash <(wget -qO- https://namingo.org/install-whmcs-epp.sh) namingo
 ```
 
-4. Activate from **Configuration -> Apps & Integrations -> (search for _[MODULE]_) -> Activate**, then configure it under **Configuration -> System Settings -> Domain Registrars**. Enter your registry connection details, including the EPP host, port, login credentials, and the full filesystem paths to your client TLS certificate (`cert.pem`) and private key (`key.pem`).
+Replace `namingo` with the registry name. Run without parameters to see all supported registries:
 
-5. Add a new TLD using **Configuration -> System Settings -> Domain Pricing**, assign it to the activated registrar module, and configure the pricing as needed.
+```bash
+bash <(wget -qO- https://namingo.org/install-whmcs-epp.sh)
+```
 
-6. If your module includes **additional domain fields**, copy the contents of `additionalfields.php` into `[WHMCS_path]/resources/domains/additionalfields.php`. If the file already exists, **merge the contents carefully** (do not overwrite the existing file).
+The installer automatically detects WHMCS under `/var/www`. You may also specify the path explicitly:
 
-7. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
+```bash
+bash <(wget -qO- https://namingo.org/install-whmcs-epp.sh) namingo /var/www/whmcs
+```
+
+2. During installation, the script can optionally generate a **self-signed EPP client certificate for testing**. It will print the full certificate and private key paths after installation, which you can use directly in the module settings. For production, replace them with the certificate and private key issued or approved by your registry.
+
+3. Activate from **Configuration -> Apps & Integrations -> (search for _[MODULE]_) -> Activate**, then configure it under **Configuration -> System Settings -> Domain Registrars**. Enter your registry connection details, including the EPP host, port, login credentials, and the full filesystem paths to your client TLS certificate (`cert.pem`) and private key (`key.pem`).
+
+4. Add a new TLD using **Configuration -> System Settings -> Domain Pricing**, assign it to the activated registrar module, and configure the pricing as needed.
+
+5. If your module includes **additional domain fields**, copy the contents of `additionalfields.php` into `[WHMCS_path]/resources/domains/additionalfields.php`. If the file already exists, **merge the contents carefully** (do not overwrite the existing file).
+
+6. Create a **whois.json** file in `[WHMCS]/resources/domains` and add the following:
 
 ```
 [
@@ -99,9 +108,11 @@ chmod -R 755 [WHMCS_path]/modules/registrars/yourmodule
 
 ## Upgrade
 
-- Before upgrading, note your current module settings.
-- Download the updated module and repeat the installation steps to replace the existing files.
-- After upgrading, verify that your module settings are still correct.
+Upgrade to the latest release with:
+
+```bash
+bash <(wget -qO- https://namingo.org/install-whmcs-epp.sh) namingo /var/www/whmcs
+```
 
 ## Troubleshooting
 
