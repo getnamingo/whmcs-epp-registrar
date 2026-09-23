@@ -1658,6 +1658,7 @@ function epp_SaveContactDetails(array $params = [])
     $return = [];
     try {
         $profile = $params['registry_profile'] ?? 'generic';
+        $contactPostalType = ($params['contact_postal_type'] ?? 'int') === 'loc' ? 'loc' : 'int';
 
         $epp = epp_client($params);
         $domain = $params['sld'] . '.' . ltrim($params['tld'], '.');
@@ -1744,7 +1745,7 @@ function epp_SaveContactDetails(array $params = [])
 
             $contactUpdate = $epp->contactUpdate([
                 'id'               => $id,
-                'type'             => 'int',
+                'type'             => $contactPostalType,
                 'firstname'        => $firstName,
                 'lastname'         => $lastName,
                 'companyname'      => $org,
