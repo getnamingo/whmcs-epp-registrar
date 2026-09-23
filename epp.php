@@ -1823,6 +1823,9 @@ function epp_IDProtectToggle(array $params = [])
 
         $flag = empty($params['idprotection']) ? 1 : 0;
         $profile = $params['registry_profile'] ?? 'generic';
+        $contactPostalType = ($params['contact_postal_type'] ?? 'int') === 'loc'
+            ? 'loc'
+            : 'int';
 
         /**
          * GE: privacy is domain-level (hiddenInWhoIs)
@@ -1914,8 +1917,8 @@ function epp_IDProtectToggle(array $params = [])
                 <contact:id>'.$id.'</contact:id>
                 <contact:chg>
                   <contact:disclose flag="'.$flag.'">
-                    <contact:name type="int"/>
-                    <contact:addr type="int"/>
+                    <contact:name type="'.$contactPostalType.'"/>
+                    <contact:addr type="'.$contactPostalType.'"/>
                     <contact:voice/>
                     <contact:fax/>
                     <contact:email/>
