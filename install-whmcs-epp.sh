@@ -2,12 +2,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION='1.2.2'
-# v1.2.2 currently has no uploaded release asset. Pin the source archive to the
-# commit behind the tag so a moved tag cannot silently change installer input.
-SOURCE_COMMIT='a99f2d1bd71324ca21b19e1816106575798b66d6'
-ARCHIVE="whmcs-epp-registrar-${VERSION}.tar.gz"
-DOWNLOAD_URL="https://github.com/getnamingo/whmcs-epp-registrar/archive/${SOURCE_COMMIT}.tar.gz"
+DOWNLOAD_URL="https://github.com/getnamingo/whmcs-epp-registrar/archive/refs/tags/v1.2.2.tar.gz"
 
 CC_REGISTRIES=(
   registrebf switch niccl cocca cocca2 eurid afnic nicge carnet nicim switchli
