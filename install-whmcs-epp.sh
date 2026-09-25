@@ -97,21 +97,6 @@ prompt_whmcs_root() {
   done
 }
 
-ask_yes_no() {
-  local prompt=$1 answer
-
-  [[ -t 0 || -t 1 || -t 2 ]] || return 1
-
-  while true; do
-    read -r -p "$prompt [y/N]: " answer </dev/tty
-    case "${answer,,}" in
-      y|yes) return 0 ;;
-      ''|n|no) return 1 ;;
-      *) printf 'Please answer yes or no.\n' >&2 ;;
-    esac
-  done
-}
-
 if (($# == 0)); then
   usage
   exit 0
@@ -279,7 +264,7 @@ mkdir -p "$pem_backup"
 if [[ -d "$module_dest" ]]; then
   while IFS= read -r -d '' pem; do
     "${SUDO[@]}" cp -p -- "$pem" "$pem_backup/"
-  done < <("${SUDO[@]}" find "$module_dest" -maxdepth 1 -type f -name '*.pem' -print0)
+  done < <("${SUDO[@]}" find "$module_dest/ssl" -maxdepth 1 -type f -name '*.pem' -print0 2>/dev/null)
 fi
 
 stage_dest="$registrars_dir/.${registry}.install.$$"
@@ -293,14 +278,15 @@ backup_dest="$registrars_dir/.${registry}.backup.$$"
 "${SUDO[@]}" find "$stage_dest" -type f -exec chmod 0644 {} +
 
 # Restore registry/client certificates from an existing installation, if any.
+"${SUDO[@]}" install -d -o www-data -g www-data -m 0700 -- "$stage_dest/ssl"
+
 if compgen -G "$pem_backup/*.pem" >/dev/null; then
   for pem in "$pem_backup"/*.pem; do
-    "${SUDO[@]}" cp -p -- "$pem" "$stage_dest/"
+    "${SUDO[@]}" install -o www-data -g www-data -m 0600 -- "$pem" "$stage_dest/ssl/"
   done
 fi
 
 "${SUDO[@]}" chown -R www-data:www-data -- "$stage_dest"
-"${SUDO[@]}" find "$stage_dest" -maxdepth 1 -type f -name '*.pem' -exec chmod 0600 {} +
 
 if [[ -e "$module_dest" ]]; then
   "${SUDO[@]}" mv -- "$module_dest" "$backup_dest"
@@ -315,16 +301,19 @@ else
   info "Installed WHMCS registrar module: $registry"
 fi
 
-cert_path="$module_dest/${registry}_cert.pem"
-key_path="$module_dest/${registry}_key.pem"
+ssl_dir="$module_dest/ssl"
+cert_path="$ssl_dir/${registry}_cert.pem"
+key_path="$ssl_dir/${registry}_key.pem"
 cert_generated='no'
 
-if ask_yes_no "Generate a self-signed TEST EPP certificate for ${registry_name}?"; then
-  need_cmd openssl
+"${SUDO[@]}" install -d -o www-data -g www-data -m 0700 -- "$ssl_dir"
 
-  if [[ -e "$cert_path" || -e "$key_path" ]]; then
-    die "Refusing to overwrite an existing certificate/key: $cert_path or $key_path"
-  fi
+if [[ -e "$cert_path" || -e "$key_path" ]]; then
+  [[ -f "$cert_path" && -f "$key_path" ]] \
+    || die "Incomplete existing certificate pair in $ssl_dir"
+  info "Existing EPP certificate/key found, keeping them."
+else
+  need_cmd openssl
 
   cert_tmp="$workdir/${registry}_cert.pem"
   key_tmp="$workdir/${registry}_key.pem"
