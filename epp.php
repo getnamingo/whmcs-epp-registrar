@@ -147,7 +147,7 @@ function epp_getConfigArray(array $params = [])
         'registry_profile' => [
             'FriendlyName' => 'Registry Profile',
             'Type'    => 'dropdown',
-            'Options'      => 'generic,GE,EU,FR,HR,LV,MX,PL,PT,SE,SWITCH,UA,VRSN',
+            'Options'      => 'generic,GE,EU,FR,HR,LV,MX,PL,PT,SE,SI,SWITCH,UA,VRSN',
             'Default'     => 'generic',
             'Description' => 'Select the registry profile matching the registry implementation. <a href="https://github.com/getnamingo/whmcs-epp-registrar" target="_blank">List of profiles</a>',
         ],
@@ -380,11 +380,13 @@ function epp_RegisterDomain(array $params = [])
                     // LV-only extras
                     'regNr'  => ($profile === 'LV') ? ($params['additionalfields']['NIN'] ?? null) : null,
                     'vatNr'  => ($profile === 'LV') ? ($params['additionalfields']['VAT'] ?? null) : null,
-                    // HR / GE extras
+                    // HR / GE / SI extras
                     'nin' => in_array($profile, ['HR', 'GE'], true)
                         ? ($params['additionalfields']['NIN'] ?? null)
                         : null,
-                    'nin_type' => ($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null,
+                    'nin_type' => ($profile === 'SI')
+                        ? (trim((string)($params['companyname'] ?? '')) !== '' ? 'org' : 'person')
+                        : (($profile === 'HR') ? ($params['additionalfields']['NIN Type'] ?? null) : null),
                     // PT-only extras
                     'vat' => ($profile === 'PT') ? ($params['additionalfields']['VAT'] ?? null) : null,
                     'validated' => ($profile === 'PT') ? $ptValidation['validated'] : null,
