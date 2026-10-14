@@ -84,4 +84,25 @@ foreach (array_keys($valid) as $field) {
 // Preserve handling of registry-specific/legacy values, including removal.
 check(epp_readDnssecDsRecord(array_replace($valid, ['alg' => 5, 'digestType' => 1, 'digest' => str_repeat('A', 40)]))['alg'] === 5, 'Legacy DS rejected');
 check(epp_readDnssecDsRecord(array_replace($valid, ['alg' => 253, 'digestType' => 3]))['alg'] === 253, 'Registry-specific DS rejected');
+// Private digest types must remain removable even outside common digest lengths.
+foreach ([253, 254] as $digestType) {
+    foreach ([2, 32, 130, 256] as $length) {
+        $record = epp_readDnssecDsRecord(array_replace($valid, [
+            'digestType' => $digestType, 'digest' => str_repeat('ab', $length / 2),
+        ]));
+        $result = $epp->domainUpdateDNSSEC([
+            'domainname' => 'example.test', 'command' => 'rem',
+            'keyTag_1' => $record['keyTag'], 'alg_1' => $record['alg'],
+            'digestType_1' => $record['digestType'], 'digest_1' => $record['digest'],
+        ]);
+        check(($result['code'] ?? null) === 1000, 'Private digest removal failed');
+        $xml = simplexml_load_string($epp->request);
+        $xml->registerXPathNamespace('s', 'urn:ietf:params:xml:ns:secDNS-1.1');
+        $ds = $xml->xpath('//s:rem/s:dsData')[0]->children('urn:ietf:params:xml:ns:secDNS-1.1');
+        check((int) $ds->digestType === $digestType && (string) $ds->digest === str_repeat('AB', $length / 2), 'Private digest changed on removal');
+    }
+    foreach (['', ' ', 'A', 'ABC', 'GG', 'AABBZZ'] as $digest) {
+        rejected(array_replace($valid, ['digestType' => $digestType, 'digest' => $digest]));
+    }
+}
 echo "DNSSEC validation and EPP add/remove serialization checks passed.\n";

@@ -2203,8 +2203,9 @@ function epp_readDnssecDsRecord(array $data): array
         throw new \InvalidArgumentException('Missing or invalid DNSSEC digest');
     }
     $digest = strtoupper(preg_replace('/\s+/', '', $data['digest']));
-    if (!preg_match('/\A[0-9A-F]{40,128}\z/', $digest) || strlen($digest) % 2 !== 0) {
-        throw new \InvalidArgumentException('DNSSEC digest must be an even-length hexadecimal value between 40 and 128 characters');
+    // Private/registry-specific digest types have no locally known length.
+    if (!preg_match('/\A[0-9A-F]+\z/', $digest) || strlen($digest) % 2 !== 0) {
+        throw new \InvalidArgumentException('DNSSEC digest must be a non-empty, even-length hexadecimal value');
     }
 
     $digestLengths = [2 => 64, 4 => 96, 6 => 64]; // SHA-256, SHA-384, SM3
