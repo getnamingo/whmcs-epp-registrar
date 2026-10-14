@@ -2184,6 +2184,40 @@ function epp_RequestDelete(array $params = [])
     }
 }
 
+/** Validate DS form data without limiting algorithms accepted by each registry. */
+function epp_readDnssecDsRecord(array $data): array
+{
+    $record = [];
+    foreach (['keyTag' => [0, 65535], 'alg' => [1, 255], 'digestType' => [1, 255]] as $field => $range) {
+        $value = $data[$field] ?? null;
+        if ((!is_int($value) && !is_string($value)) || !preg_match('/\A[0-9]+\z/', (string) $value)) {
+            throw new \InvalidArgumentException('Invalid DNSSEC ' . $field);
+        }
+        if ($value < $range[0] || $value > $range[1]) {
+            throw new \InvalidArgumentException('DNSSEC ' . $field . ' is out of range');
+        }
+        $record[$field] = (int) $value;
+    }
+
+    if (!isset($data['digest']) || !is_string($data['digest'])) {
+        throw new \InvalidArgumentException('Missing or invalid DNSSEC digest');
+    }
+    $digest = strtoupper(preg_replace('/\s+/', '', $data['digest']));
+    // Private/registry-specific digest types have no locally known length.
+    if (!preg_match('/\A[0-9A-F]+\z/', $digest) || strlen($digest) % 2 !== 0) {
+        throw new \InvalidArgumentException('DNSSEC digest must be a non-empty, even-length hexadecimal value');
+    }
+
+    $digestLengths = [2 => 64, 4 => 96, 6 => 64]; // SHA-256, SHA-384, SM3
+    $digestType = $record['digestType'];
+    if (isset($digestLengths[$digestType]) && strlen($digest) !== $digestLengths[$digestType]) {
+        throw new \InvalidArgumentException('DNSSEC digest type ' . $digestType . ' requires exactly ' . $digestLengths[$digestType] . ' hexadecimal characters');
+    }
+    $record['digest'] = $digest;
+
+    return $record;
+}
+
 function epp_manageDNSSECDSRecords(array $params = [])
 {
     $return = [];
@@ -2195,22 +2229,15 @@ function epp_manageDNSSECDSRecords(array $params = [])
             : $domain;
 
         if (isset($_POST['command']) && ($_POST['command'] === 'secDNSadd')) {
-            $keyTag     = (int)($_POST['keyTag'] ?? 0);
-            $alg        = (int)($_POST['alg'] ?? 0);
-            $digestType = (int)($_POST['digestType'] ?? 0);
-            $digest     = trim((string)($_POST['digest'] ?? ''));
-
-            if ($keyTag <= 0 || $alg <= 0 || $digestType <= 0 || $digest === '') {
-                throw new \Exception('Missing or invalid DNSSEC DS data');
-            }
+            $record = epp_readDnssecDsRecord($_POST);
 
             $domainUpdateDNSSEC = $epp->domainUpdateDNSSEC([
                 'domainname'   => $domain,
                 'command'      => 'add',
-                'keyTag_1'     => $keyTag,
-                'alg_1'        => $alg,
-                'digestType_1' => $digestType,
-                'digest_1'     => $digest,
+                'keyTag_1'     => $record['keyTag'],
+                'alg_1'        => $record['alg'],
+                'digestType_1' => $record['digestType'],
+                'digest_1'     => $record['digest'],
             ]);
 
             if (!empty($domainUpdateDNSSEC['error'])) {
@@ -2223,22 +2250,15 @@ function epp_manageDNSSECDSRecords(array $params = [])
         }
 
         if (isset($_POST['command']) && ($_POST['command'] === 'secDNSrem')) {
-            $keyTag     = (int)($_POST['keyTag'] ?? 0);
-            $alg        = (int)($_POST['alg'] ?? 0);
-            $digestType = (int)($_POST['digestType'] ?? 0);
-            $digest     = trim((string)($_POST['digest'] ?? ''));
-
-            if ($keyTag <= 0 || $alg <= 0 || $digestType <= 0 || $digest === '') {
-                throw new \Exception('Missing or invalid DNSSEC DS data');
-            }
+            $record = epp_readDnssecDsRecord($_POST);
 
             $domainUpdateDNSSEC = $epp->domainUpdateDNSSEC([
                 'domainname'   => $domain,
                 'command'      => 'rem',
-                'keyTag_1'     => $keyTag,
-                'alg_1'        => $alg,
-                'digestType_1' => $digestType,
-                'digest_1'     => $digest,
+                'keyTag_1'     => $record['keyTag'],
+                'alg_1'        => $record['alg'],
+                'digestType_1' => $record['digestType'],
+                'digest_1'     => $record['digest'],
             ]);
 
             if (!empty($domainUpdateDNSSEC['error'])) {

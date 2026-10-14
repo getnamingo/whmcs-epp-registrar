@@ -76,7 +76,7 @@
             <div class="form-group row">
                 <label for="keytag1" class="col-md-4 col-form-label">Key tag</label>
                 <div class="col-md-6">
-                    <input name="keyTag" type="text" maxlength="65535" class="form-control" id="keytag1" data-supported="True" data-required="True" data-previousvalue="" />
+                    <input name="keyTag" type="number" min="0" max="65535" step="1" required class="form-control" id="keytag1" data-supported="True" data-required="True" data-previousvalue="" />
                 </div>
             </div>
             <div class="form-group row">
@@ -88,6 +88,8 @@
                         <option value="14">14: ECDSA Curve P-384 with SHA-384</option>
                         <option value="15">15: Ed25519</option>
                         <option value="16">16: Ed448</option>
+                        <option value="17">17: SM2SM3</option>
+                        <option value="18">18: ML-DSA-44</option>
                     </select>
                 </div>
             </div>
@@ -97,6 +99,7 @@
                     <select name="digestType" class="form-control" id="digestType" data-supported="True" data-required="True" data-previousvalue="">
                         <option value="2">2: SHA-256</option>
                         <option value="4">4: SHA-384</option>
+                        <option value="6">6: SM3</option>
                     </select>
                 </div>
             </div>
