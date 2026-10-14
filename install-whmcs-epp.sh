@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION='1.2.4'
+VERSION='1.2.5'
 ARCHIVE="whmcs-epp-v${VERSION}.tar.gz"
 DOWNLOAD_URL="https://github.com/getnamingo/whmcs-epp-registrar/archive/refs/tags/v${VERSION}.tar.gz"
 
