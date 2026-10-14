@@ -115,6 +115,14 @@ Upgrade to the latest release with:
 bash <(wget -qO- https://namingo.org/install-whmcs-epp.sh) namingo /var/www/whmcs
 ```
 
+## DNSSEC DS records
+
+The client form includes algorithms 17 (SM2SM3) and 18 (ML-DSA-44), alongside the existing algorithms. Digest types 2 (SHA-256), 4 (SHA-384), and 6 (SM3) require 64, 96, and 64 hexadecimal characters respectively. Copy the DS values supplied by the authoritative DNS provider; the target registry must support the selected values.
+
+The module forwards DS records over EPP and does not generate keys, signatures, or digests, so SM3 support in the local OpenSSL library is not needed for DS submission. Key tags from 0 through 65535 are accepted. Other numeric algorithm/digest identifiers remain subject to registry policy; existing records can still be displayed and removed.
+
+Run the standalone DNSSEC validation and EPP serialization checks with `php tests/dnssec.php` (requires SimpleXML).
+
 ## Troubleshooting
 
 1. **Multiple EPP modules conflict**
