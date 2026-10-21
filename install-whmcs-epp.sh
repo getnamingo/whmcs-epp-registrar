@@ -2,12 +2,12 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION='1.2.5'
+VERSION='1.2.6'
 ARCHIVE="whmcs-epp-v${VERSION}.tar.gz"
 DOWNLOAD_URL="https://github.com/getnamingo/whmcs-epp-registrar/archive/refs/tags/v${VERSION}.tar.gz"
 
 CC_REGISTRIES=(
-  registrebf switch niccl cocca cocca2 eurid afnic nicge carnet nicim switchli
+  arnes registrebf switch niccl cocca cocca2 eurid afnic nicge carnet nicim switchli
   niclv nicmx sidn iisnu nask rotld iis hostmaster ye zadna
 )
 G_REGISTRIES=(
