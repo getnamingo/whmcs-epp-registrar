@@ -1,12 +1,20 @@
 <?php
-/**
- * Namingo EPP Registrar module for WHMCS (https://www.whmcs.com/)
+
+/*
+ * Namingo EPP Registrar module for WHMCS
  *
- * Written in 2024-2026 by Taras Kondratyuk (https://namingo.org)
+ * Copyright (c) 2023-2026 Taras Kondratyuk
+ * Copyright (c) 2025-2026 Namingo contributors
+ * Copyright (c) 2026 Terbora Ltd.
+ *
  * Based on Generic EPP with DNSsec Registrar Module for WHMCS written in 2019 by Lilian Rudenco (info@xpanel.com)
  * Work of Lilian Rudenco is under http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
+ * https://github.com/xpanel/Generic-EPP-with-DNSsec-Registrar-Module-for-WHMCS
  *
- * @license MIT
+ * Licensed under the MIT License.
+ * See the LICENSE file distributed with this software for the full license text.
+ *
+ * SPDX-License-Identifier: MIT
  */
 
 if (!defined("WHMCS")) {
@@ -2373,7 +2381,7 @@ function epp_AdminCustomButtonArray(array $params = [])
         ->where('status', '=', 'pendingTransfer')
         ->exists();
 
-    if ($transferPending) {
+    if ($transferPending && ($params['registry_profile'] ?? 'generic') !== 'RO') {
         $buttons['Approve Transfer'] = 'ApproveTransfer';
         $buttons['Cancel Transfer Request'] = 'CancelTransfer';
         $buttons['Reject Transfer'] = 'RejectTransfer';
@@ -2527,6 +2535,10 @@ function epp_UnHoldDomain(array $params = [])
 }
 
 function epp_ApproveTransfer($params) {
+    if (($params['registry_profile'] ?? 'generic') === 'RO') {
+        return ['error' => 'RoTLD transfers complete immediately; pending-transfer actions are not supported.'];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -2534,20 +2546,6 @@ function epp_ApproveTransfer($params) {
         $domain = function_exists('idn_to_ascii')
             ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
             : $domain;
-
-        // RoTLD has immediate transfers and no transfer-query operation.
-        if (($params['registry_profile'] ?? 'generic') === 'RO') {
-            $info = $epp->domainInfo(['domainname' => $domain]);
-            if (isset($info['error'])) {
-                throw new \Exception($info['error']);
-            }
-            $completed = !empty($params['clid']) && ($info['clID'] ?? '') === (string)$params['clid'];
-            $return = ['completed' => $completed];
-            if ($completed && !empty($info['exDate'])) {
-                $return['expirydate'] = date('Y-m-d', strtotime($info['exDate']));
-            }
-            return $return;
-        }
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
@@ -2573,6 +2571,10 @@ function epp_ApproveTransfer($params) {
 }
 
 function epp_CancelTransfer($params) {
+    if (($params['registry_profile'] ?? 'generic') === 'RO') {
+        return ['error' => 'RoTLD transfers complete immediately; pending-transfer actions are not supported.'];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -2605,6 +2607,10 @@ function epp_CancelTransfer($params) {
 }
 
 function epp_RejectTransfer($params) {
+    if (($params['registry_profile'] ?? 'generic') === 'RO') {
+        return ['error' => 'RoTLD transfers complete immediately; pending-transfer actions are not supported.'];
+    }
+
     $return = [];
     try {
         $epp = epp_client($params);
@@ -2645,6 +2651,27 @@ function epp_TransferSync(array $params = [])
         $domain = function_exists('idn_to_ascii')
             ? (idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) ?: $domain)
             : $domain;
+
+        // RoTLD has immediate transfers and no transfer-query operation.
+        if (($params['registry_profile'] ?? 'generic') === 'RO') {
+            $info = $epp->domainInfo(['domainname' => $domain]);
+            if (isset($info['error'])) {
+                throw new \Exception($info['error']);
+            }
+            if (empty($params['clid']) || empty($info['clID'])) {
+                throw new \Exception('Cannot confirm RoTLD transfer: missing registrar ID or sponsoring client ID.');
+            }
+
+            $completed = (string)$info['clID'] === (string)$params['clid'];
+            $return = ['completed' => $completed];
+            if ($completed && !empty($info['exDate'])) {
+                $expiryDate = strtotime((string)$info['exDate']);
+                if ($expiryDate !== false) {
+                    $return['expirydate'] = date('Y-m-d', $expiryDate);
+                }
+            }
+            return $return;
+        }
 
         $domainTransfer = $epp->domainTransfer([
             'domainname' => $domain,
