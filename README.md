@@ -37,7 +37,7 @@ This module is designed to work with both gTLD and ccTLD registries and provides
 | NIC.LV | .lv | LV | |
 | .PT | .pt | PT | |
 | Regtons | all | | |
-| RoTLD | .ro | | |
+| RoTLD | .ro | RO | |
 | RyCE | all | | |
 | SIDN | all | | |
 | SWITCH | .ch, .li | SWITCH | Set AuthInfo on Request |
