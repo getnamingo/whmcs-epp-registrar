@@ -3006,13 +3006,9 @@ function epp_GetContactDetailsFromDb(array $params = []): array
         ->where('name', $domain)
         ->first();
 
-    if (!$d || empty($d->registrant)) {
-        return [];
-    }
-
-    // Load registrant contact
+    // Load registrant contact (or use the WHMCS fallback below).
     $c = Capsule::table('namingo_contact')
-        ->where('id', (int)$d->registrant)
+        ->where('id', (int)($d->registrant ?? 0))
         ->first();
 
     if (!$c) {
@@ -3103,8 +3099,32 @@ function epp_SaveRegistrantContactToDb(array $params = []): array
         ->where('name', $domain)
         ->first();
 
-    if (!$d || empty($d->registrant)) {
-        return ['error' => 'Local domain record or registrant contact not found'];
+    // Create missing local domain from existing WHMCS dates.
+    if (!$d) {
+        $whmcs = Capsule::table('tbldomains')->where('domain', $domain)
+            ->first(['registrationdate', 'expirydate']);
+        if (!$whmcs || empty($whmcs->expirydate) || substr($whmcs->expirydate, 0, 10) === '0000-00-00') {
+            return ['error' => 'Missing WHMCS domain or valid expiry date'];
+        }
+        Capsule::table('namingo_domain')->insert([
+            'name' => $domain, 'registry_domain_id' => '', 'clid' => 1, 'crid' => 1,
+            'crdate' => (!empty($whmcs->registrationdate) && $whmcs->registrationdate !== '0000-00-00')
+                ? $whmcs->registrationdate . ' 00:00:00' : date('Y-m-d H:i:s.u'),
+            'exdate' => $whmcs->expirydate . ' 00:00:00',
+        ]);
+    }
+
+    // Create and attach a registrant if the reference is NULL or stale.
+    if (empty($d->registrant)
+        || !Capsule::table('namingo_contact')->where('id', (int)$d->registrant)->exists()
+        || Capsule::table('namingo_domain')->where('registrant', (int)$d->registrant)->where('name', '!=', $domain)->exists()) {
+        $id = Capsule::table('namingo_contact')->insertGetId([
+            'identifier' => 'LOCAL-' . strtoupper(epp_random_contact_id()),
+            'name' => $fullName, 'email' => $email, 'city' => $city, 'cc' => $cc,
+            'clid' => 1, 'crdate' => date('Y-m-d H:i:s.u'),
+        ]);
+        Capsule::table('namingo_domain')->where('name', $domain)->update(['registrant' => $id]);
+        $d = (object)['registrant' => $id];
     }
 
     Capsule::table('namingo_contact')
